@@ -1,13 +1,15 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeView } from '@/components/layout/SafeView';
-import { Header } from '@/components/layout/Header';
+import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { colors } from '@/constants/colors';
 import { spacing } from '@/constants/spacing';
+import { fonts, textStyles } from '@/constants/typography';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -58,21 +60,26 @@ export default function ProviderVerifyScreen() {
 
   return (
     <SafeView>
-      <Header title="Provider verification" showBack />
-      <View style={styles.form}>
-        <Text style={styles.text}>Upload your license image for review. You can still use the app while pending.</Text>
-        <Text style={styles.label}>License number</Text>
-        <Input value={license} onChangeText={setLicense} placeholder="State license #" />
-        <Text style={styles.label}>Years of experience</Text>
-        <Input value={years} onChangeText={setYears} keyboardType="number-pad" />
-        <Button title="Choose license image" loading={loading} onPress={pickImage} style={{ marginTop: spacing.md }} />
-      </View>
+      <ScreenHeader title="Verification" showBack />
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Text style={[textStyles.bodyMuted, styles.lead]}>
+          Upload your license for review. You can use the app while we verify your credentials.
+        </Text>
+        <Card style={styles.card}>
+          <Text style={styles.label}>License number</Text>
+          <Input value={license} onChangeText={setLicense} placeholder="State license #" />
+          <Text style={styles.label}>Years of experience</Text>
+          <Input value={years} onChangeText={setYears} keyboardType="number-pad" />
+          <Button title="Upload license image" loading={loading} onPress={pickImage} style={{ marginTop: spacing.md }} />
+        </Card>
+      </ScrollView>
     </SafeView>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { padding: spacing.lg, gap: spacing.sm },
-  text: { fontSize: 14, color: colors.stone, marginBottom: spacing.sm },
-  label: { fontSize: 14, fontWeight: '600', color: colors.charcoal },
+  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  lead: { marginBottom: spacing.md },
+  card: { gap: spacing.sm },
+  label: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.brown, marginTop: spacing.xs },
 });

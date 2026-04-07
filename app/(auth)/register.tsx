@@ -1,12 +1,14 @@
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeView } from '@/components/layout/SafeView';
-import { Header } from '@/components/layout/Header';
+import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { colors } from '@/constants/colors';
 import { spacing } from '@/constants/spacing';
+import { fonts } from '@/constants/typography';
 import { supabase } from '@/lib/supabase';
 import type { UserRole } from '@/types/database';
 
@@ -52,24 +54,32 @@ export default function RegisterScreen() {
 
   return (
     <SafeView>
-      <Header title="Create account" showBack />
-      <Text style={styles.hint}>Registering as {role}</Text>
-      <View style={styles.form}>
-        <Text style={styles.label}>Email</Text>
-        <Input autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
-        <Text style={styles.label}>Password</Text>
-        <Input secureTextEntry value={password} onChangeText={setPassword} />
-        <Button title="Sign up" loading={loading} onPress={onSubmit} style={{ marginTop: spacing.lg }} />
+      <ScreenHeader title="Create account" showBack />
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Text style={styles.hint}>You&apos;re signing up as a {role === 'provider' ? 'provider' : 'client'}.</Text>
+        <Card style={styles.card}>
+          <Text style={styles.label}>Email</Text>
+          <Input autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
+          <Text style={styles.label}>Password</Text>
+          <Input secureTextEntry value={password} onChangeText={setPassword} />
+          <Button title="Continue" loading={loading} onPress={onSubmit} style={{ marginTop: spacing.lg }} />
+        </Card>
         <Link href="/(auth)/login" asChild>
           <Button title="Have an account? Log in" variant="outline" style={{ marginTop: spacing.md }} />
         </Link>
-      </View>
+      </ScrollView>
     </SafeView>
   );
 }
 
 const styles = StyleSheet.create({
-  hint: { paddingHorizontal: spacing.lg, color: colors.stone },
-  form: { padding: spacing.lg, gap: spacing.sm },
-  label: { fontSize: 14, fontWeight: '600', color: colors.charcoal },
+  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  hint: {
+    fontFamily: fonts.body,
+    fontSize: 15,
+    color: colors.stone,
+    marginBottom: spacing.md,
+  },
+  card: { gap: spacing.sm },
+  label: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.brown, marginTop: spacing.xs },
 });

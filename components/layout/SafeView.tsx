@@ -9,6 +9,6 @@ export function SafeView({ style, ...rest }: ViewProps) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.cream,
+    backgroundColor: colors.background,
   },
 });

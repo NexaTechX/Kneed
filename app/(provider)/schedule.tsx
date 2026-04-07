@@ -1,9 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeView } from '@/components/layout/SafeView';
+import { ScreenHeader } from '@/components/layout/ScreenHeader';
+import { Card } from '@/components/ui/Card';
 import { AvailabilityToggle } from '@/components/provider/AvailabilityToggle';
 import { colors } from '@/constants/colors';
 import { spacing } from '@/constants/spacing';
+import { textStyles } from '@/constants/typography';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import type { Availability } from '@/types/database';
@@ -34,17 +37,18 @@ export default function ProviderScheduleScreen() {
 
   return (
     <SafeView>
-      <Text style={styles.title}>Weekly availability</Text>
-      <Text style={styles.sub}>Toggle days and adjust hours. Changes save automatically.</Text>
+      <ScreenHeader title="Schedule" />
+      <Text style={[textStyles.bodyMuted, styles.sub]}>Toggle days and adjust hours. Changes save automatically.</Text>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
         {Array.from({ length: 7 }).map((_, day) => (
-          <AvailabilityToggle
-            key={day}
-            providerId={user.id}
-            day={day}
-            availability={byDay(day)}
-            onSaved={() => void qc.invalidateQueries({ queryKey: ['availability-week', user?.id] })}
-          />
+          <Card key={day} style={styles.dayCard}>
+            <AvailabilityToggle
+              providerId={user.id}
+              day={day}
+              availability={byDay(day)}
+              onSaved={() => void qc.invalidateQueries({ queryKey: ['availability-week', user?.id] })}
+            />
+          </Card>
         ))}
       </ScrollView>
     </SafeView>
@@ -52,12 +56,9 @@ export default function ProviderScheduleScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.charcoal,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+  sub: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  dayCard: {
+    marginBottom: spacing.md,
+    paddingVertical: spacing.xs,
   },
-  sub: { paddingHorizontal: spacing.lg, color: colors.stone, marginBottom: spacing.sm },
 });

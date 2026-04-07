@@ -1,6 +1,7 @@
 import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
 import { colors } from '@/constants/colors';
 import { spacing } from '@/constants/spacing';
+import { fonts } from '@/constants/typography';
 
 export function Input(props: TextInputProps) {
   return (
@@ -14,14 +15,15 @@ export function Input(props: TextInputProps) {
 
 const styles = StyleSheet.create({
   input: {
-    minHeight: 44,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: colors.dustyrose,
-    borderRadius: 12,
+    borderColor: colors.borderLight,
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: 16,
-    color: colors.charcoal,
-    backgroundColor: colors.white,
+    fontFamily: fonts.body,
+    color: colors.brown,
+    backgroundColor: colors.backgroundAlt,
   },
 });

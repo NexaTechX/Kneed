@@ -1,12 +1,14 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeView } from '@/components/layout/SafeView';
-import { Header } from '@/components/layout/Header';
+import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { colors } from '@/constants/colors';
 import { spacing } from '@/constants/spacing';
+import { fonts, textStyles } from '@/constants/typography';
 import { fetchProfile, updateProfile } from '@/lib/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/stores/authStore';
@@ -46,19 +48,24 @@ export default function ProfileSetupScreen() {
 
   return (
     <SafeView>
-      <Header title="Your profile" showBack />
-      <View style={styles.form}>
-        <Text style={styles.label}>Full name</Text>
-        <Input value={name} onChangeText={setName} placeholder="Alex Rivera" />
-        <Text style={styles.label}>Phone (optional)</Text>
-        <Input value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="555-0100" />
-        <Button title="Continue" loading={loading} onPress={onContinue} style={{ marginTop: spacing.lg }} />
-      </View>
+      <ScreenHeader title="Your profile" showBack />
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Text style={[textStyles.bodyMuted, styles.lead]}>A few details so providers know who you are.</Text>
+        <Card style={styles.card}>
+          <Text style={styles.label}>Full name</Text>
+          <Input value={name} onChangeText={setName} placeholder="Alex Rivera" />
+          <Text style={styles.label}>Phone (optional)</Text>
+          <Input value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="555-0100" />
+          <Button title="Continue" loading={loading} onPress={onContinue} style={{ marginTop: spacing.lg }} />
+        </Card>
+      </ScrollView>
     </SafeView>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { padding: spacing.lg, gap: spacing.sm },
-  label: { fontSize: 14, fontWeight: '600', color: colors.charcoal },
+  scroll: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  lead: { marginBottom: spacing.md },
+  card: { gap: spacing.sm },
+  label: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.brown, marginTop: spacing.xs },
 });

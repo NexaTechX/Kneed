@@ -1,31 +1,67 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeView } from '@/components/layout/SafeView';
-import { Header } from '@/components/layout/Header';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card } from '@/components/ui/Card';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { addDays, format, isSameDay, startOfDay } from 'date-fns';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
-import { ServiceList } from '@/components/provider/ServiceList';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { GradientButton } from '@/components/ui/GradientButton';
 import { TimeSlotPicker } from '@/components/booking/TimeSlotPicker';
 import { RatingStarsDisplay } from '@/components/provider/RatingStars';
 import { colors } from '@/constants/colors';
 import { spacing } from '@/constants/spacing';
+import { fonts, textStyles } from '@/constants/typography';
 import { useProviderDetail } from '@/hooks/useProviders';
-import { calculateFees, formatCents } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
+import { formatCents } from '@/lib/utils';
 import { useBookingDraftStore } from '@/stores/bookingDraftStore';
 import type { Service } from '@/types/database';
 
+const DATE_STRIP_DAYS = 10;
+
+function DateStrip({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+  const days = useMemo(
+    () => Array.from({ length: DATE_STRIP_DAYS }, (_, i) => addDays(startOfDay(new Date()), i)),
+    [],
+  );
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripRow}>
+      {days.map((d) => {
+        const sel = isSameDay(d, value);
+        return (
+          <Pressable
+            key={d.toISOString()}
+            onPress={() => onChange(d)}
+            style={[styles.stripChip, sel && styles.stripChipOn]}>
+            <Text style={[styles.stripDow, sel && styles.stripDowOn]}>{format(d, 'EEE')}</Text>
+            <Text style={[styles.stripDom, sel && styles.stripDomOn]}>{format(d, 'd')}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export default function ProviderDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id: rawId } = useLocalSearchParams<{ id: string | string[] }>();
   const id = typeof rawId === 'string' ? rawId : rawId?.[0];
   const router = useRouter();
-  const { user } = useAuth();
   const { data, isLoading } = useProviderDetail(id);
+  const scrollRef = useRef<ScrollView>(null);
+  const bookSectionY = useRef(0);
 
   const step = useBookingDraftStore((s) => s.step);
   const setStep = useBookingDraftStore((s) => s.setStep);
@@ -33,17 +69,14 @@ export default function ProviderDetailScreen() {
   const setService = useBookingDraftStore((s) => s.setService);
   const setTime = useBookingDraftStore((s) => s.setTime);
   const setLocationType = useBookingDraftStore((s) => s.setLocationType);
-  const setNotes = useBookingDraftStore((s) => s.setNotes);
   const reset = useBookingDraftStore((s) => s.reset);
 
   const serviceId = useBookingDraftStore((s) => s.serviceId);
   const scheduledAt = useBookingDraftStore((s) => s.scheduledAt);
   const locationType = useBookingDraftStore((s) => s.locationType);
-  const notes = useBookingDraftStore((s) => s.notes);
 
   const [date, setDate] = useState(new Date());
   const [showDate, setShowDate] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -57,95 +90,158 @@ export default function ProviderDetailScreen() {
     [data?.services, serviceId],
   );
 
-  const onBook = async () => {
-    if (!user || !id || !selectedService || !scheduledAt) {
-      Alert.alert('Missing details');
+  const minPriceCents = useMemo(() => {
+    const active = (data?.services ?? []).filter((s) => s.is_active);
+    if (!active.length) return 0;
+    return Math.min(...active.map((s) => s.price_cents));
+  }, [data?.services]);
+
+  const goToConfirm = () => {
+    if (!id || !selectedService || !scheduledAt) {
+      Alert.alert('Pick a time');
       return;
     }
-    const loc: 'studio' | 'mobile' =
-      selectedService.location_type === 'mobile'
-        ? 'mobile'
-        : selectedService.location_type === 'studio'
-          ? 'studio'
-          : locationType ?? 'studio';
-
     if (selectedService.location_type === 'both' && !locationType) {
-      Alert.alert('Choose location', 'Studio or mobile?');
+      Alert.alert('Choose location', 'Go back and pick studio or mobile.');
       return;
     }
+    router.push('/(client)/booking/confirm');
+  };
 
-    setSubmitting(true);
-    try {
-      const { platformFee, total } = calculateFees(selectedService.price_cents);
-      const { error } = await supabase.from('bookings').insert({
-        client_id: user.id,
-        provider_id: id,
-        service_id: selectedService.id,
-        scheduled_at: scheduledAt.toISOString(),
-        location_type: loc,
-        address: loc === 'mobile' ? null : null,
-        status: 'pending',
-        price_cents: selectedService.price_cents,
-        platform_fee_cents: platformFee,
-        total_cents: total,
-        notes: notes || null,
+  const scrollToBooking = () => {
+    setStep(1);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(0, bookSectionY.current - 12),
+        animated: true,
       });
-      if (error) throw error;
-      reset();
-      Alert.alert('Booked!', 'Your request was sent to the provider.', [
-        { text: 'OK', onPress: () => router.replace('/(client)/(tabs)/bookings') },
-      ]);
-    } catch (e: unknown) {
-      Alert.alert('Booking failed', e instanceof Error ? e.message : 'Error');
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   if (!id) {
     return (
-      <SafeView>
-        <Header title="Provider" showBack />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
         <Text style={styles.muted}>Invalid provider link.</Text>
-      </SafeView>
+      </SafeAreaView>
     );
   }
 
   if (isLoading || !data) {
     return (
-      <SafeView>
-        <Header title="Provider" showBack />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
         <Text style={styles.muted}>Loading…</Text>
-      </SafeView>
+      </SafeAreaView>
     );
   }
 
   const profileName = data.profiles?.full_name ?? 'Provider';
+  const avatarUri = data.profiles?.avatar_url ?? null;
+  const locationLabel = data.studio_address?.trim()
+    ? data.studio_address
+    : data.lat != null && data.lng != null
+      ? 'Service area'
+      : 'Location on request';
+
+  const services = (data.services ?? []).filter((s) => s.is_active);
 
   return (
-    <SafeView>
-      <Header title={profileName} showBack />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xxl }}>
-        {!data.is_verified ? <Badge label="Verification pending" tone="warning" /> : null}
-        <View style={styles.row}>
-          <RatingStarsDisplay value={data.average_rating} />
-          <Text style={styles.meta}>{data.total_reviews} reviews</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['bottom', 'left', 'right']}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ paddingBottom: spacing.xxl }}
+        showsVerticalScrollIndicator={false}>
+        <View style={styles.heroWrap}>
+          <LinearGradient
+            colors={[colors.dustyRoseCard, colors.coralBright]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroGrad}
+          />
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backFab, { top: insets.top + 8 }]}
+            accessibilityRole="button">
+            <FontAwesome name="chevron-left" size={22} color={colors.white} />
+          </Pressable>
         </View>
-        {data.bio ? <Text style={styles.bio}>{data.bio}</Text> : null}
 
-        <Text style={styles.section}>Services</Text>
-        <Card>
-          <ServiceList services={(data.services ?? []).filter((s) => s.is_active)} />
-        </Card>
+        <View style={styles.profileBlock}>
+          <View style={styles.avatarWrap}>
+            <Avatar uri={avatarUri} name={profileName} size={96} />
+          </View>
+          <Text style={[textStyles.titleSerif, styles.name]}>{profileName}</Text>
+          <View style={styles.verifyRow}>
+            {data.is_verified ? (
+              <>
+                <FontAwesome name="check-circle" size={16} color={colors.verifiedGreen} />
+                <Text style={styles.verifiedText}>Knead verified</Text>
+              </>
+            ) : (
+              <Badge label="Verification pending" tone="warning" />
+            )}
+          </View>
+          <View style={styles.locRow}>
+            <FontAwesome name="map-marker" size={14} color={colors.stone} />
+            <Text style={styles.locText}>{locationLabel}</Text>
+          </View>
+          <View style={styles.ratingRow}>
+            <RatingStarsDisplay value={data.average_rating} />
+            <Text style={styles.meta}>{data.total_reviews} reviews</Text>
+          </View>
 
-        <Text style={styles.section}>Book</Text>
-        <Text style={styles.step}>Step {step} of 4</Text>
+          <View style={styles.statGrid}>
+            <View style={styles.statCell}>
+              <Text style={styles.statVal}>{data.total_reviews}</Text>
+              <Text style={styles.statLabel}>Reviews</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statVal}>{data.average_rating.toFixed(1)}</Text>
+              <Text style={styles.statLabel}>Rating</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statVal}>{minPriceCents ? formatCents(minPriceCents) : '—'}</Text>
+              <Text style={styles.statLabel}>From</Text>
+            </View>
+            <View style={styles.statCell}>
+              <Text style={styles.statVal}>{data.years_exp ?? 0}+</Text>
+              <Text style={styles.statLabel}>Years exp.</Text>
+            </View>
+          </View>
 
-        {step === 1 && (
-          <View style={{ gap: spacing.sm }}>
-            {(data.services ?? [])
-              .filter((s) => s.is_active)
-              .map((s: Service) => (
+          {data.bio ? (
+            <View style={styles.about}>
+              <Text style={styles.sectionTitle}>About</Text>
+              <Text style={styles.bio}>{data.bio}</Text>
+            </View>
+          ) : null}
+
+          <Text style={styles.sectionTitle}>Services</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.svcRow}>
+            {services.map((s: Service) => (
+              <Card key={s.id} style={styles.svcCard}>
+                <Text style={styles.svcTitle}>{s.type.replace('_', ' ')}</Text>
+                <Text style={styles.svcMeta}>
+                  {s.duration_min} min · {s.location_type}
+                </Text>
+                <Text style={styles.svcPrice}>{formatCents(s.price_cents)}</Text>
+              </Card>
+            ))}
+          </ScrollView>
+
+          <GradientButton title="Book session" icon="none" onPress={scrollToBooking} style={{ marginTop: spacing.md }} />
+        </View>
+
+        <View
+          onLayout={(e) => {
+            bookSectionY.current = e.nativeEvent.layout.y;
+          }}
+          style={styles.bookSection}>
+          <Text style={styles.sectionTitle}>Book</Text>
+          <Text style={styles.stepLabel}>Step {step} of 3</Text>
+
+          {step === 1 && (
+            <View style={{ gap: spacing.sm }}>
+              {services.map((s: Service) => (
                 <Button
                   key={s.id}
                   title={`${s.type.replace('_', ' ')} · ${formatCents(s.price_cents)}`}
@@ -156,92 +252,199 @@ export default function ProviderDetailScreen() {
                   }}
                 />
               ))}
-            <Button title="Next" onPress={() => (serviceId ? setStep(2) : Alert.alert('Pick a service'))} />
-          </View>
-        )}
+              <Button title="Next" onPress={() => (serviceId ? setStep(2) : Alert.alert('Pick a service'))} />
+            </View>
+          )}
 
-        {step === 2 && (
-          <View style={{ gap: spacing.md }}>
-            <Button title={date.toDateString()} onPress={() => setShowDate(true)} />
-            {showDate && (
-              <DateTimePicker
-                value={date}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(_, d) => {
-                  setShowDate(Platform.OS === 'ios');
-                  if (d) setDate(d);
+          {step === 2 && (
+            <View style={{ gap: spacing.md }}>
+              <Text style={styles.subLabel}>Choose a day</Text>
+              <DateStrip value={date} onChange={setDate} />
+              <Pressable onPress={() => setShowDate(true)} style={styles.altDate}>
+                <Text style={styles.altDateText}>Other date…</Text>
+              </Pressable>
+              {showDate && (
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_, d) => {
+                    setShowDate(Platform.OS === 'ios');
+                    if (d) setDate(d);
+                  }}
+                />
+              )}
+              {selectedService?.location_type === 'both' ? (
+                <View style={{ gap: spacing.sm }}>
+                  <Text style={styles.subLabel}>Location</Text>
+                  <Button
+                    title="Studio"
+                    variant={locationType === 'studio' ? 'coral' : 'outline'}
+                    onPress={() => setLocationType('studio')}
+                  />
+                  <Button
+                    title="Mobile"
+                    variant={locationType === 'mobile' ? 'coral' : 'outline'}
+                    onPress={() => setLocationType('mobile')}
+                  />
+                </View>
+              ) : null}
+              <Button title="Next" onPress={() => setStep(3)} />
+            </View>
+          )}
+
+          {step === 3 && id ? (
+            <View style={{ gap: spacing.md }}>
+              <Text style={styles.subLabel}>Choose a time</Text>
+              <TimeSlotPicker
+                providerId={id}
+                selectedDate={date}
+                selected={scheduledAt}
+                onSelect={(t) => {
+                  const combined = new Date(date);
+                  combined.setHours(t.getHours(), t.getMinutes(), 0, 0);
+                  setTime(combined);
                 }}
               />
-            )}
-            {selectedService?.location_type === 'both' ? (
-              <View style={{ gap: spacing.sm }}>
-                <Button
-                  title="Studio"
-                  variant={locationType === 'studio' ? 'coral' : 'outline'}
-                  onPress={() => setLocationType('studio')}
-                />
-                <Button
-                  title="Mobile"
-                  variant={locationType === 'mobile' ? 'coral' : 'outline'}
-                  onPress={() => setLocationType('mobile')}
-                />
-              </View>
-            ) : null}
-            <Button title="Next" onPress={() => setStep(3)} />
-          </View>
-        )}
-
-        {step === 3 && id ? (
-          <View style={{ gap: spacing.md }}>
-            <TimeSlotPicker
-              providerId={id}
-              selectedDate={date}
-              selected={scheduledAt}
-              onSelect={(t) => {
-                const combined = new Date(date);
-                combined.setHours(t.getHours(), t.getMinutes(), 0, 0);
-                setTime(combined);
-              }}
-            />
-            <Button title="Next" onPress={() => (scheduledAt ? setStep(4) : Alert.alert('Pick a time'))} />
-          </View>
-        ) : null}
-
-        {step === 4 && selectedService && scheduledAt ? (
-          <Card>
-            <Text style={styles.confirm}>Service: {selectedService.type}</Text>
-            <Text style={styles.confirm}>When: {scheduledAt.toLocaleString()}</Text>
-            <Text style={styles.confirm}>Price: {formatCents(selectedService.price_cents)}</Text>
-            <Text style={styles.confirm}>
-              Platform fee (15%): {formatCents(calculateFees(selectedService.price_cents).platformFee)}
-            </Text>
-            <Text style={styles.confirmTotal}>
-              Total: {formatCents(calculateFees(selectedService.price_cents).total)}
-            </Text>
-            <Text style={[styles.section, { marginTop: spacing.md }]}>Notes (optional)</Text>
-            <Input
-              placeholder="Anything the provider should know?"
-              value={notes ?? ''}
-              onChangeText={(t) => setNotes(t)}
-              multiline
-              style={{ minHeight: 80, textAlignVertical: 'top' }}
-            />
-            <Button title="Confirm booking" loading={submitting} onPress={onBook} />
-          </Card>
-        ) : null}
+              <Button title="Continue to payment" onPress={goToConfirm} />
+            </View>
+          ) : null}
+        </View>
       </ScrollView>
-    </SafeView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   muted: { padding: spacing.lg, color: colors.stone },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  heroWrap: { position: 'relative' },
+  heroGrad: { height: 160, width: '100%' },
+  backFab: {
+    position: 'absolute',
+    left: spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileBlock: {
+    paddingHorizontal: spacing.lg,
+    marginTop: -52,
+  },
+  avatarWrap: {
+    alignSelf: 'center',
+    borderWidth: 4,
+    borderColor: colors.background,
+    borderRadius: 52,
+  },
+  name: { textAlign: 'center', marginTop: spacing.sm },
+  verifyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+  },
+  verifiedText: {
+    fontFamily: fonts.bodySemi,
+    fontSize: 14,
+    color: colors.brown,
+  },
+  locRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.xs,
+  },
+  locText: { fontSize: 14, color: colors.stone },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
   meta: { color: colors.stone },
-  bio: { color: colors.charcoal, marginBottom: spacing.md },
-  section: { marginTop: spacing.lg, fontSize: 18, fontWeight: '700', color: colors.charcoal },
-  step: { color: colors.stone, marginBottom: spacing.sm },
-  confirm: { fontSize: 15, color: colors.charcoal, marginBottom: 6 },
-  confirmTotal: { fontSize: 18, fontWeight: '800', color: colors.coral, marginVertical: spacing.sm },
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: spacing.lg,
+    gap: spacing.sm,
+  },
+  statCell: {
+    width: '47%',
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  statVal: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 18,
+    color: colors.brown,
+  },
+  statLabel: {
+    marginTop: 4,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.stone,
+  },
+  about: { marginTop: spacing.lg },
+  sectionTitle: {
+    fontFamily: fonts.serifSemi,
+    fontSize: 20,
+    color: colors.brownDark,
+    marginBottom: spacing.sm,
+  },
+  bio: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.brown },
+  svcRow: { gap: spacing.sm, paddingVertical: spacing.xs },
+  svcCard: {
+    width: 200,
+    marginRight: spacing.sm,
+    padding: spacing.md,
+  },
+  svcTitle: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 16,
+    color: colors.brown,
+    textTransform: 'capitalize',
+  },
+  svcMeta: { fontSize: 13, color: colors.stone, marginTop: 4 },
+  svcPrice: {
+    marginTop: spacing.sm,
+    fontFamily: fonts.bodyBold,
+    fontSize: 17,
+    color: colors.coralBright,
+  },
+  bookSection: { padding: spacing.lg, paddingTop: spacing.xl },
+  stepLabel: { color: colors.stone, marginBottom: spacing.sm, fontFamily: fonts.body },
+  subLabel: {
+    fontFamily: fonts.bodySemi,
+    fontSize: 14,
+    color: colors.brown,
+  },
+  stripRow: { gap: spacing.sm, paddingVertical: spacing.xs },
+  stripChip: {
+    width: 56,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    alignItems: 'center',
+  },
+  stripChipOn: {
+    backgroundColor: colors.badgePink,
+    borderColor: colors.coralBright,
+  },
+  stripDow: { fontSize: 11, color: colors.stone, fontFamily: fonts.bodyMedium },
+  stripDowOn: { color: colors.brown },
+  stripDom: { fontSize: 18, fontFamily: fonts.bodyBold, color: colors.brown, marginTop: 2 },
+  stripDomOn: { color: colors.coralBright },
+  altDate: { alignSelf: 'flex-start', paddingVertical: spacing.xs },
+  altDateText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.teal },
 });
