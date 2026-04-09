@@ -1,12 +1,21 @@
 import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
-import { colors } from '@/constants/colors';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { spacing } from '@/constants/spacing';
 
 export function Input(props: TextInputProps) {
+  const t = useAppTheme();
   return (
     <TextInput
-      placeholderTextColor={colors.stone}
-      style={[styles.input, props.style]}
+      placeholderTextColor={t.textTertiary}
+      style={[
+        styles.input,
+        {
+          borderColor: t.borderStrong,
+          color: t.text,
+          backgroundColor: t.inputBackground,
+        },
+        props.style,
+      ]}
       {...props}
     />
   );
@@ -14,14 +23,11 @@ export function Input(props: TextInputProps) {
 
 const styles = StyleSheet.create({
   input: {
-    minHeight: 44,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: colors.dustyrose,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontSize: 16,
-    color: colors.charcoal,
-    backgroundColor: colors.white,
   },
 });

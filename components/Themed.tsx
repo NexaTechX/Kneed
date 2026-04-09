@@ -5,23 +5,15 @@
 
 import { Text as DefaultText, View as DefaultView } from 'react-native';
 
-import { colors } from '@/constants/colors';
-import { useColorScheme } from './useColorScheme';
+import { lightTheme } from '@/constants/theme';
 
 const themePalette = {
   light: {
-    text: colors.charcoal,
-    background: colors.cream,
-    tint: colors.coral,
-    tabIconDefault: colors.stone,
-    tabIconSelected: colors.coral,
-  },
-  dark: {
-    text: colors.cream,
-    background: colors.charcoal,
-    tint: colors.coral,
-    tabIconDefault: colors.stone,
-    tabIconSelected: colors.coral,
+    text: lightTheme.text,
+    background: lightTheme.background,
+    tint: lightTheme.primary,
+    tabIconDefault: lightTheme.textTertiary,
+    tabIconSelected: lightTheme.primary,
   },
 } as const;
 
@@ -37,13 +29,12 @@ export function useThemeColor(
   props: { light?: string; dark?: string },
   colorName: keyof (typeof themePalette)['light'],
 ) {
-  const theme = useColorScheme() ?? 'light';
-  const colorFromProps = props[theme];
+  const colorFromProps = props.light ?? props.dark;
 
   if (colorFromProps) {
     return colorFromProps;
   } else {
-    return themePalette[theme][colorName];
+    return themePalette.light[colorName];
   }
 }
 

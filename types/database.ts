@@ -60,6 +60,8 @@ export interface Availability {
   is_active: boolean;
 }
 
+export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
+
 export interface Booking {
   id: string;
   client_id: string;
@@ -76,6 +78,8 @@ export interface Booking {
   created_at: string;
   cancelled_at: string | null;
   cancellation_reason: string | null;
+  paystack_reference: string | null;
+  payment_status: PaymentStatus;
 }
 
 export interface Review {
@@ -113,7 +117,11 @@ export interface Database {
       };
       bookings: {
         Row: Booking;
-        Insert: Omit<Booking, 'id' | 'created_at'> & { id?: string };
+        Insert: Omit<Booking, 'id' | 'created_at' | 'paystack_reference' | 'payment_status'> & {
+          id?: string;
+          paystack_reference?: string | null;
+          payment_status?: PaymentStatus;
+        };
         Update: Partial<Booking>;
       };
       reviews: {

@@ -1,13 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeView } from '@/components/layout/SafeView';
+import { ScreenTitle } from '@/components/layout/ScreenTitle';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { colors } from '@/constants/colors';
+import type { AppTheme } from '@/constants/theme';
 import { spacing } from '@/constants/spacing';
 import { formatCents } from '@/lib/utils';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import type { DurationMin, LocationType, ServiceType } from '@/types/database';
@@ -17,6 +19,8 @@ const DURATIONS: DurationMin[] = [30, 60, 90, 120];
 const LOCS: LocationType[] = ['studio', 'mobile', 'both'];
 
 export default function ProviderServicesScreen() {
+  const t = useAppTheme();
+  const styles = useMemo(() => createStyles(t), [t]);
   const { user } = useAuth();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<string | 'new' | null>(null);
@@ -80,7 +84,7 @@ export default function ProviderServicesScreen() {
 
   return (
     <SafeView>
-      <Text style={styles.title}>Services</Text>
+      <ScreenTitle kicker="Menu" title="Services" />
       <View style={{ padding: spacing.lg, gap: spacing.md }}>
         {(data ?? []).map((s) => (
           <Card key={s.id}>
@@ -115,17 +119,35 @@ export default function ProviderServicesScreen() {
           <Card>
             <Text style={styles.label}>Type</Text>
             <View style={styles.row}>
-              {TYPES.map((t) => (
-                <Pressable key={t} onPress={() => setForm((f) => ({ ...f, type: t }))} style={styles.chip}>
-                  <Text>{t}</Text>
+              {TYPES.map((type) => (
+                <Pressable
+                  key={type}
+                  onPress={() => setForm((f) => ({ ...f, type }))}
+                  style={[
+                    styles.chip,
+                    {
+                      borderColor: form.type === type ? t.primary : t.borderStrong,
+                      backgroundColor: form.type === type ? t.primaryMuted : t.surfaceElevated,
+                    },
+                  ]}>
+                  <Text style={[styles.chipLabel, { color: form.type === type ? t.primary : t.text }]}>{type}</Text>
                 </Pressable>
               ))}
             </View>
             <Text style={styles.label}>Duration</Text>
             <View style={styles.row}>
               {DURATIONS.map((d) => (
-                <Pressable key={d} onPress={() => setForm((f) => ({ ...f, duration_min: d }))} style={styles.chip}>
-                  <Text>{d}</Text>
+                <Pressable
+                  key={d}
+                  onPress={() => setForm((f) => ({ ...f, duration_min: d }))}
+                  style={[
+                    styles.chip,
+                    {
+                      borderColor: form.duration_min === d ? t.primary : t.borderStrong,
+                      backgroundColor: form.duration_min === d ? t.primaryMuted : t.surfaceElevated,
+                    },
+                  ]}>
+                  <Text style={[styles.chipLabel, { color: form.duration_min === d ? t.primary : t.text }]}>{d}</Text>
                 </Pressable>
               ))}
             </View>
@@ -134,8 +156,17 @@ export default function ProviderServicesScreen() {
             <Text style={styles.label}>Location</Text>
             <View style={styles.row}>
               {LOCS.map((l) => (
-                <Pressable key={l} onPress={() => setForm((f) => ({ ...f, location_type: l }))} style={styles.chip}>
-                  <Text>{l}</Text>
+                <Pressable
+                  key={l}
+                  onPress={() => setForm((f) => ({ ...f, location_type: l }))}
+                  style={[
+                    styles.chip,
+                    {
+                      borderColor: form.location_type === l ? t.primary : t.borderStrong,
+                      backgroundColor: form.location_type === l ? t.primaryMuted : t.surfaceElevated,
+                    },
+                  ]}>
+                  <Text style={[styles.chipLabel, { color: form.location_type === l ? t.primary : t.text }]}>{l}</Text>
                 </Pressable>
               ))}
             </View>
@@ -148,23 +179,25 @@ export default function ProviderServicesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.charcoal,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  rowTitle: { fontSize: 16, fontWeight: '700', color: colors.charcoal, textTransform: 'capitalize' },
-  rowMeta: { marginTop: 4, color: colors.stone },
-  label: { marginTop: spacing.sm, fontWeight: '600', color: colors.charcoal },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.dustyrose,
-  },
-});
+function createStyles(t: AppTheme) {
+  return StyleSheet.create({
+    rowTitle: { fontSize: 17, fontWeight: '800', color: t.text, textTransform: 'capitalize', letterSpacing: -0.2 },
+    rowMeta: { marginTop: 4, color: t.textSecondary, fontSize: 14 },
+    label: {
+      marginTop: spacing.sm,
+      fontWeight: '700',
+      color: t.textTertiary,
+      fontSize: 12,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    chip: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    chipLabel: { fontSize: 13, fontWeight: '700', textTransform: 'capitalize' },
+  });
+}

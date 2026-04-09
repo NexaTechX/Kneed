@@ -1,4 +1,4 @@
-import { addMinutes, differenceInHours, isBefore, isSameDay, parseISO, setHours, setMinutes } from 'date-fns';
+import { addMinutes, differenceInHours, isSameDay, parseISO, setHours, setMinutes } from 'date-fns';
 import type { Availability, Booking } from '@/types/database';
 import { config } from '@/constants/config';
 
@@ -72,5 +72,8 @@ export function generateTimeSlots(
 }
 
 export function formatCents(cents: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(cents / 100);
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: config.displayCurrencyCode,
+  }).format(cents / 100);
 }

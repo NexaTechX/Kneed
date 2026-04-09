@@ -63,13 +63,17 @@ export function useClientBookings() {
   });
 
   useEffect(() => {
+    // Unique topic per subscription — supabase.channel() reuses the same instance by name, so a
+    // second listener (Strict Mode remount, or overlapping mounts) would call .on() after subscribe.
+    const topic = `bookings-client:${Date.now()}:${Math.random().toString(36).slice(2, 11)}`;
     const ch = supabase
-      .channel('bookings-client')
+      .channel(topic)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
         () => {
           void qc.invalidateQueries({ queryKey: queryKeys.bookingsClient() });
+          void qc.invalidateQueries({ queryKey: ['booking'] });
         },
       )
       .subscribe();
@@ -89,13 +93,15 @@ export function useProviderBookings() {
   });
 
   useEffect(() => {
+    const topic = `bookings-provider:${Date.now()}:${Math.random().toString(36).slice(2, 11)}`;
     const ch = supabase
-      .channel('bookings-provider')
+      .channel(topic)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
         () => {
           void qc.invalidateQueries({ queryKey: queryKeys.bookingsProvider() });
+          void qc.invalidateQueries({ queryKey: ['booking'] });
         },
       )
       .subscribe();

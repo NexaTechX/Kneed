@@ -4,6 +4,7 @@ export const queryKeys = {
   providers: (params: Record<string, unknown>) => ['providers', params] as const,
   bookingsClient: () => ['bookings', 'client'] as const,
   bookingsProvider: () => ['bookings', 'provider'] as const,
+  booking: (id: string) => ['booking', id] as const,
   availability: (providerId: string, dateIso: string) => ['availability', providerId, dateIso] as const,
   earnings: (providerId: string, period: string) => ['earnings', providerId, period] as const,
   services: (providerId: string) => ['services', providerId] as const,

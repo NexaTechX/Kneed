@@ -1,0 +1,7 @@
+# https://supabase.com/docs/guides/cli/config
+
+[functions.paystack-webhook]
+verify_jwt = false
+
+[functions.booking-push-notify]
+verify_jwt = true

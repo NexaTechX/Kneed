@@ -4,7 +4,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Platform } from 'react-native';
 import type { Availability } from '@/types/database';
 import { supabase } from '@/lib/supabase';
-import { colors } from '@/constants/colors';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { spacing } from '@/constants/spacing';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -31,6 +31,7 @@ export function AvailabilityToggle({
   availability?: Availability | null;
   onSaved?: () => void;
 }) {
+  const t = useAppTheme();
   const [on, setOn] = useState(availability?.is_active ?? false);
   const [start, setStart] = useState(timeToDate(availability?.start_time ?? '09:00:00'));
   const [end, setEnd] = useState(timeToDate(availability?.end_time ?? '18:00:00'));
@@ -61,20 +62,28 @@ export function AvailabilityToggle({
   };
 
   return (
-    <View style={styles.row}>
-      <Text style={styles.day}>{DAYS[day]}</Text>
+    <View style={[styles.row, { borderBottomColor: t.border }]}>
+      <Text style={[styles.day, { color: t.text }]}>{DAYS[day]}</Text>
       <Switch
         value={on}
         onValueChange={(v) => void persist({ is_active: v })}
-        trackColor={{ true: colors.coral, false: colors.dustyrose }}
+        trackColor={{ true: t.primary, false: t.borderStrong }}
+        thumbColor={t.surfaceElevated}
+        ios_backgroundColor={t.borderStrong}
         disabled={saving}
       />
-      <Pressable onPress={() => setShowStart(true)} style={styles.timeBtn} disabled={!on}>
-        <Text style={styles.timeText}>{dateToTime(start).slice(0, 5)}</Text>
+      <Pressable
+        onPress={() => setShowStart(true)}
+        style={[styles.timeBtn, { borderColor: t.borderStrong, backgroundColor: t.surfaceElevated }]}
+        disabled={!on}>
+        <Text style={[styles.timeText, { color: t.text }]}>{dateToTime(start).slice(0, 5)}</Text>
       </Pressable>
-      <Text style={styles.sep}>–</Text>
-      <Pressable onPress={() => setShowEnd(true)} style={styles.timeBtn} disabled={!on}>
-        <Text style={styles.timeText}>{dateToTime(end).slice(0, 5)}</Text>
+      <Text style={[styles.sep, { color: t.textTertiary }]}>–</Text>
+      <Pressable
+        onPress={() => setShowEnd(true)}
+        style={[styles.timeBtn, { borderColor: t.borderStrong, backgroundColor: t.surfaceElevated }]}
+        disabled={!on}>
+        <Text style={[styles.timeText, { color: t.text }]}>{dateToTime(end).slice(0, 5)}</Text>
       </Pressable>
 
       {showStart && (
@@ -113,19 +122,19 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     gap: spacing.sm,
     flexWrap: 'wrap',
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  day: { width: 40, fontWeight: '700', color: colors.charcoal },
+  day: { width: 40, fontWeight: '800' },
   timeBtn: {
     minHeight: 44,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.dustyrose,
     justifyContent: 'center',
   },
-  timeText: { fontSize: 15, color: colors.charcoal },
-  sep: { color: colors.stone },
+  timeText: { fontSize: 15, fontWeight: '600' },
+  sep: { fontWeight: '600' },
 });

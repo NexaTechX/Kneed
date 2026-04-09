@@ -1,20 +1,33 @@
 import { StyleSheet, View, type ViewProps } from 'react-native';
-import { colors } from '@/constants/colors';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { spacing } from '@/constants/spacing';
 
 export function Card({ style, ...rest }: ViewProps) {
-  return <View style={[styles.card, style]} {...rest} />;
+  const t = useAppTheme();
+  return (
+    <View
+      style={[
+        styles.card,
+        {
+          backgroundColor: t.surfaceElevated,
+          borderColor: t.border,
+          shadowColor: t.shadow,
+        },
+        style,
+      ]}
+      {...rest}
+    />
+  );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
     elevation: 3,
   },
 });

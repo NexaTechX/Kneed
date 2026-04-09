@@ -1,10 +1,14 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { Service } from '@/types/database';
 import { formatCents } from '@/lib/utils';
-import { colors } from '@/constants/colors';
+import type { AppTheme } from '@/constants/theme';
+import { useAppTheme } from '@/hooks/useAppTheme';
 import { spacing } from '@/constants/spacing';
 
 export function ServiceList({ services }: { services: Service[] }) {
+  const t = useAppTheme();
+  const styles = useMemo(() => createStyles(t), [t]);
   return (
     <View style={styles.wrap}>
       {services.map((s) => (
@@ -22,16 +26,18 @@ export function ServiceList({ services }: { services: Service[] }) {
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { gap: spacing.sm },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.dustyrose,
-  },
-  title: { fontSize: 16, fontWeight: '600', color: colors.charcoal, textTransform: 'capitalize' },
-  meta: { fontSize: 13, color: colors.stone, marginTop: 2 },
-  price: { fontSize: 16, fontWeight: '700', color: colors.coral },
-});
+function createStyles(t: AppTheme) {
+  return StyleSheet.create({
+    wrap: { gap: spacing.sm },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: t.border,
+    },
+    title: { fontSize: 16, fontWeight: '700', color: t.text, textTransform: 'capitalize' },
+    meta: { fontSize: 13, color: t.textSecondary, marginTop: 2 },
+    price: { fontSize: 16, fontWeight: '800', color: t.primary },
+  });
+}

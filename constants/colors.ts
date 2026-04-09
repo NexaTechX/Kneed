@@ -1,12 +1,15 @@
+/**
+ * Light-mode brand primitives. New UI should use `useAppTheme()` from `@/hooks/useAppTheme`.
+ */
 export const colors = {
-  coral: '#E07A5F',
-  dustyrose: '#D4A5A5',
-  cream: '#F5F1ED',
-  charcoal: '#2C2C2C',
-  stone: '#8B8B8B',
-  white: '#FFFFFF',
-  error: '#C45C5C',
-  success: '#5C8C5C',
+  coral: '#C25645',
+  dustyrose: '#9A8F8C',
+  cream: '#F3F0EA',
+  charcoal: '#161412',
+  stone: '#8C8680',
+  white: '#FFFCF8',
+  error: '#B84040',
+  success: '#2F6F4B',
 } as const;
 
 export type ColorKey = keyof typeof colors;

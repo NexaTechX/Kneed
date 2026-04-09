@@ -1,14 +1,25 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { colors } from '@/constants/colors';
+import { useAppTheme } from '@/hooks/useAppTheme';
 
 export function Avatar({ uri, name, size = 56 }: { uri?: string | null; name: string; size?: number }) {
+  const t = useAppTheme();
   const initial = name.trim().charAt(0).toUpperCase() || '?';
   return (
-    <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
+    <View
+      style={[
+        styles.circle,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: t.primaryMuted,
+          borderColor: t.border,
+        },
+      ]}>
       {uri ? (
         <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />
       ) : (
-        <Text style={styles.initial}>{initial}</Text>
+        <Text style={[styles.initial, { color: t.primary }, { fontSize: Math.round(size * 0.36) }]}>{initial}</Text>
       )}
     </View>
   );
@@ -16,10 +27,10 @@ export function Avatar({ uri, name, size = 56 }: { uri?: string | null; name: st
 
 const styles = StyleSheet.create({
   circle: {
-    backgroundColor: colors.dustyrose,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  initial: { color: colors.white, fontSize: 22, fontWeight: '700' },
+  initial: { fontWeight: '800' },
 });
