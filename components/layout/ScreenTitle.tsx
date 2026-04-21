@@ -29,16 +29,16 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   kicker: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    marginBottom: spacing.xs,
+    marginBottom: 4,
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-    lineHeight: 38,
+    fontSize: 28,
+    fontWeight: '700',
+    letterSpacing: -0.7,
+    lineHeight: 34,
   },
 });

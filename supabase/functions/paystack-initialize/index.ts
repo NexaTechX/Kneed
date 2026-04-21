@@ -5,6 +5,10 @@ const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+type InitBody =
+  | { kind: 'ppv'; post_id: string }
+  | { kind: 'private_room'; session_id: string };
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -36,19 +40,11 @@ Deno.serve(async (req) => {
     });
   }
 
-  let body: { booking_id?: string };
+  let body: InitBody;
   try {
-    body = (await req.json()) as { booking_id?: string };
+    body = (await req.json()) as InitBody;
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
-  const bookingId = body.booking_id;
-  if (!bookingId) {
-    return new Response(JSON.stringify({ error: 'booking_id required' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -69,35 +65,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { data: booking, error: bErr } = await supabase
-    .from('bookings')
-    .select('id, client_id, total_cents, payment_status, paystack_reference')
-    .eq('id', bookingId)
-    .maybeSingle();
-
-  if (bErr || !booking) {
-    return new Response(JSON.stringify({ error: 'Booking not found' }), {
-      status: 404,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (booking.client_id !== user.id) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), {
-      status: 403,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (booking.payment_status === 'paid') {
-    return new Response(JSON.stringify({ error: 'Already paid' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-
   const { data: profile } = await supabase.from('profiles').select('email').eq('id', user.id).maybeSingle();
-
   const email = profile?.email ?? user.email ?? '';
   if (!email) {
     return new Response(JSON.stringify({ error: 'No email on profile' }), {
@@ -106,17 +74,107 @@ Deno.serve(async (req) => {
     });
   }
 
-  const reference = `knead_${bookingId}_${Date.now()}`;
-  const amount = Math.round(Number(booking.total_cents));
-  if (!Number.isFinite(amount) || amount < 1) {
-    return new Response(JSON.stringify({ error: 'Invalid amount' }), {
+  const currency = Deno.env.get('PAYSTACK_CURRENCY') ?? 'NGN';
+  let amountCents = 0;
+  let reference = '';
+  let metadata: Record<string, string> = { kind: body.kind, buyer_id: user.id };
+
+  if (body.kind === 'ppv') {
+    const postId = body.post_id;
+    if (!postId) {
+      return new Response(JSON.stringify({ error: 'post_id required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: post, error: pErr } = await supabase
+      .from('creator_posts')
+      .select('id, creator_id, price_cents, is_paid, status, monetization_status')
+      .eq('id', postId)
+      .maybeSingle();
+
+    if (pErr || !post) {
+      return new Response(JSON.stringify({ error: 'Post not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (!post.is_paid || post.price_cents <= 0) {
+      return new Response(JSON.stringify({ error: 'Post is not paid' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (post.creator_id === user.id) {
+      return new Response(JSON.stringify({ error: 'Cannot purchase your own post' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (post.status !== 'published' || post.monetization_status !== 'approved') {
+      return new Response(JSON.stringify({ error: 'Post is not available for purchase' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    amountCents = post.price_cents;
+    reference = `knead_ppv_${postId}_${user.id}_${Date.now()}`;
+    metadata = { ...metadata, post_id: postId, seller_id: post.creator_id };
+  } else if (body.kind === 'private_room') {
+    const sessionId = body.session_id;
+    if (!sessionId) {
+      return new Response(JSON.stringify({ error: 'session_id required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: session, error: sErr } = await supabase
+      .from('private_room_sessions')
+      .select('id, booker_user_id, booked_user_id, amount_cents, status')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (sErr || !session) {
+      return new Response(JSON.stringify({ error: 'Session not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (session.booker_user_id !== user.id) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (session.status !== 'pending' && session.status !== 'accepted') {
+      return new Response(JSON.stringify({ error: 'Session is not payable' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    amountCents = session.amount_cents;
+    reference = `knead_pr_${sessionId}_${Date.now()}`;
+    metadata = {
+      ...metadata,
+      session_id: sessionId,
+      booked_user_id: session.booked_user_id,
+      booker_user_id: session.booker_user_id,
+    };
+  } else {
+    return new Response(JSON.stringify({ error: 'Invalid kind' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  /** Paystack expects smallest currency unit (e.g. kobo for NGN). Must match your Paystack account currency. */
-  const currency = Deno.env.get('PAYSTACK_CURRENCY') ?? 'NGN';
+  if (!Number.isFinite(amountCents) || amountCents < 1) {
+    return new Response(JSON.stringify({ error: 'Invalid amount' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
   const payRes = await fetch('https://api.paystack.co/transaction/initialize', {
     method: 'POST',
@@ -126,10 +184,10 @@ Deno.serve(async (req) => {
     },
     body: JSON.stringify({
       email,
-      amount,
+      amount: amountCents,
       currency,
       reference,
-      metadata: { booking_id: bookingId },
+      metadata,
     }),
   });
 
@@ -144,19 +202,6 @@ Deno.serve(async (req) => {
       JSON.stringify({ error: payJson.message ?? 'Paystack initialize failed' }),
       { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
-  }
-
-  const { error: upErr } = await supabase
-    .from('bookings')
-    .update({ paystack_reference: reference, payment_status: 'pending' })
-    .eq('id', bookingId)
-    .eq('client_id', user.id);
-
-  if (upErr) {
-    return new Response(JSON.stringify({ error: upErr.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
   }
 
   return new Response(

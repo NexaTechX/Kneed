@@ -1,6 +1,6 @@
-import FontAwesome from '@expo/vector-icons/FontAwesome';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { lightTheme } from '@/constants/theme';
 import { config } from '@/constants/config';
 
@@ -11,37 +11,43 @@ export default function ClientTabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: t.primary,
+        tabBarActiveTintColor: t.text,
         tabBarInactiveTintColor: t.textTertiary,
         tabBarStyle: {
-          minHeight: config.tabBarHeight,
+          minHeight: config.tabBarHeight + (Platform.OS === 'ios' ? 4 : 0),
           backgroundColor: t.tabBar,
           borderTopColor: t.tabBarBorder,
           borderTopWidth: StyleSheet.hairlineWidth,
-          paddingTop: 8,
-          paddingBottom: 4,
+          paddingTop: 6,
+          paddingBottom: Platform.OS === 'ios' ? 18 : 8,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', letterSpacing: 0.15 },
       }}>
       <Tabs.Screen
-        name="discover"
+        name="feed"
         options={{
-          title: 'Discover',
-          tabBarIcon: ({ color }) => <FontAwesome name="search" color={color} size={22} />,
+          title: 'Home',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={24} />
+          ),
         }}
       />
       <Tabs.Screen
-        name="bookings"
+        name="private-room"
         options={{
-          title: 'Bookings',
-          tabBarIcon: ({ color }) => <FontAwesome name="calendar" color={color} size={22} />,
+          title: 'Private',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'lock-closed' : 'lock-closed-outline'} color={color} size={24} />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <FontAwesome name="user" color={color} size={22} />,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} color={color} size={24} />
+          ),
         }}
       />
     </Tabs>

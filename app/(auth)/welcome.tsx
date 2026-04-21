@@ -1,62 +1,135 @@
+import type { ComponentProps } from 'react';
 import { Link } from 'expo-router';
-import { StyleSheet, Text, View, Pressable, Image, ScrollView } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeView } from '@/components/layout/SafeView';
 import { spacing } from '@/constants/spacing';
+import type { AppTheme } from '@/constants/theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { useAppTheme } from '@/hooks/useAppTheme';
+
+function Pillar({
+  icon,
+  iconColor,
+  title,
+  body,
+  t,
+}: {
+  icon: ComponentProps<typeof FontAwesome>['name'];
+  iconColor: string;
+  title: string;
+  body: string;
+  t: AppTheme;
+}) {
+  return (
+    <View style={[styles.pillar, { borderColor: t.border, backgroundColor: t.backgroundSecondary }]}>
+      <View style={[styles.pillarIconWrap, { backgroundColor: t.surfaceElevated }]}>
+        <FontAwesome name={icon} size={18} color={iconColor} />
+      </View>
+      <View style={styles.pillarText}>
+        <Text style={[styles.pillarTitle, { color: t.text }]}>{title}</Text>
+        <Text style={[styles.pillarBody, { color: t.textSecondary }]}>{body}</Text>
+      </View>
+    </View>
+  );
+}
 
 export default function WelcomeScreen() {
-  const showcaseImage =
-    'file:///C:/Users/shine/.cursor/projects/c-Users-shine-Desktop-KNEED/assets/c__Users_shine_AppData_Roaming_Cursor_User_workspaceStorage_58ef99ee9dda944007ce2791837d8137_images_image-80361e19-8847-4e20-9bf1-6dfae389d1db.png';
+  const t = useAppTheme();
 
   return (
-    <SafeView style={styles.root}>
+    <SafeView style={[styles.root, { backgroundColor: t.background }]}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.bgOrbTop} />
-        <View style={styles.bgOrbBottom} />
+        <View style={[styles.bgOrbTop, { backgroundColor: t.primaryMuted }]} />
+        <View style={[styles.bgOrbBottom, { backgroundColor: t.backgroundSecondary }]} />
 
         <View style={styles.brandWrap}>
-          <View style={styles.brandBadge}>
-            <FontAwesome name="leaf" size={22} color="#7A2B17" />
+          <LinearGradient
+            colors={[t.primaryMuted, t.backgroundSecondary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.brandBadge}>
+            <Image source={require('@/assets/images/brand-mark.png')} style={styles.brandMark} resizeMode="contain" />
+          </LinearGradient>
+          <View style={styles.brandWordmark}>
+            <Text style={[styles.brandName, { color: t.text }]}>Kneed</Text>
+            <Text style={[styles.brandTag, { color: t.textSecondary }]}>GROW YOUR AUDIENCE · HAVE FUN · EARN ON YOUR TERMS</Text>
           </View>
-          <Text style={styles.brandName}>Knead</Text>
+        </View>
+
+        <View style={[styles.heroImageWrap, { borderColor: t.border, backgroundColor: t.surfaceElevated, shadowColor: t.shadow }]}>
+          <Image
+            source={require('@/assets/images/welcome-social-hero.png')}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
         </View>
 
         <View style={styles.hero}>
-          <Text style={styles.headline}>Relief, delivered</Text>
-          <Text style={styles.sub}>Discover the world's most calming wellness services.</Text>
+          <View style={[styles.socialPill, { backgroundColor: t.chipBackground, borderColor: t.chipBorder }]}>
+            <FontAwesome name="heart" size={12} color={t.accent} />
+            <Text style={[styles.socialPillText, { color: t.textSecondary }]}>
+              Social first · room to grow · clear ways to get paid
+            </Text>
+          </View>
+          <Text style={[styles.headline, { color: t.text }]}>Build an audience, enjoy the feed, and turn your craft into income.</Text>
+          <Text style={[styles.sub, { color: t.textSecondary }]}>
+            Kneed is a creator-friendly social app: post photos and video, show up in a real feed, and let people who love your work
+            find you again and again. Keep it light and expressive while you scale—then layer in paid posts, unlocks, or private
+            bookings when the timing feels right for you.
+          </Text>
         </View>
 
-        <View style={styles.previewWrap}>
-          <Image source={{ uri: showcaseImage }} style={styles.previewImage} resizeMode="cover" />
-          <View style={styles.previewOverlay} />
+        <View style={[styles.stackCard, { borderColor: t.border, backgroundColor: t.surfaceElevated, shadowColor: t.shadow }]}>
+          <Text style={[styles.stackTitle, { color: t.text }]}>Grow, connect, and get paid—without losing the social vibe</Text>
+          <Pillar
+            t={t}
+            icon="users"
+            iconColor={t.primary}
+            title="Grow your reach"
+            body="Stay visible in a proper social feed: consistent posting, discovery that feels natural, and profiles fans can return to as your audience grows."
+          />
+          <Pillar
+            t={t}
+            icon="bolt"
+            iconColor={t.secondary}
+            title="Have fun building"
+            body="Share in a format people already love—quick clips, stills, captions—and keep the energy yours. Growth works best when posting still feels like you."
+          />
+          <Pillar
+            t={t}
+            icon="money"
+            iconColor={t.accent}
+            title="Make money with clarity"
+            body="Add paid posts, unlocks, or private sessions when you choose; earnings flow through your in-app wallet with transparent fees—so monetization supports the community you’re building."
+          />
         </View>
 
         {!isSupabaseConfigured ? (
-          <View style={styles.banner}>
+          <View style={[styles.banner, { borderColor: '#F1D6D6', backgroundColor: t.surfaceElevated }]}>
             <Text style={styles.warn}>Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in .env</Text>
           </View>
         ) : null}
 
         <View style={styles.actions}>
-          <Link href="/(auth)/register?role=client" asChild>
-            <Pressable style={({ pressed }) => [styles.primaryCta, pressed && styles.pressed]}>
-              <Text style={styles.primaryText}>Book a Massage</Text>
+          <Link href="/(auth)/register" asChild>
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryCta,
+                { backgroundColor: t.primary, shadowColor: t.shadow },
+                pressed && styles.pressed,
+              ]}>
+              <Text style={styles.primaryText}>Start growing on Kneed</Text>
               <FontAwesome name="arrow-right" size={18} color="#FFFFFF" />
             </Pressable>
           </Link>
 
-          <Link href="/(auth)/register?role=provider" asChild>
-            <Pressable style={({ pressed }) => [styles.secondaryCta, pressed && styles.pressed]}>
-              <Text style={styles.secondaryText}>Offer Services</Text>
-            </Pressable>
-          </Link>
-
           <View style={styles.signInRow}>
-            <Text style={styles.signInMuted}>Already have an account? </Text>
+            <Text style={[styles.signInMuted, { color: t.textSecondary }]}>Already have an account? </Text>
             <Link href="/(auth)/login" asChild>
               <Pressable>
-                <Text style={styles.signInLink}>Sign In</Text>
+                <Text style={[styles.signInLink, { color: t.text }]}>Sign In</Text>
               </Pressable>
             </Link>
           </View>
@@ -64,13 +137,13 @@ export default function WelcomeScreen() {
           <View style={styles.legalRow}>
             <Link href="/(auth)/terms" asChild>
               <Pressable>
-                <Text style={styles.legalLink}>Terms</Text>
+                <Text style={[styles.legalLink, { color: t.textTertiary }]}>Terms</Text>
               </Pressable>
             </Link>
-            <Text style={styles.legalDot}> · </Text>
+            <Text style={[styles.legalDot, { color: t.textTertiary }]}> · </Text>
             <Link href="/(auth)/privacy" asChild>
               <Pressable>
-                <Text style={styles.legalLink}>Privacy</Text>
+                <Text style={[styles.legalLink, { color: t.textTertiary }]}>Privacy</Text>
               </Pressable>
             </Link>
           </View>
@@ -81,70 +154,121 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#FAF9F6' },
+  root: { flex: 1 },
   container: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xxl },
   bgOrbTop: {
     position: 'absolute',
-    top: -70,
-    right: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(255, 168, 142, 0.17)',
+    top: -90,
+    right: -55,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
   },
   bgOrbBottom: {
     position: 'absolute',
-    bottom: 60,
-    left: -70,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(197, 133, 110, 0.1)',
+    bottom: 30,
+    left: -80,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
   },
-  brandWrap: { alignItems: 'center', marginTop: spacing.sm, marginBottom: spacing.sm },
+  brandWrap: { alignItems: 'center', marginTop: spacing.sm, marginBottom: spacing.md },
   brandBadge: {
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    backgroundColor: '#F89473',
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 8,
   },
-  brandName: { marginTop: spacing.md, fontSize: 47 / 2, fontWeight: '800', color: '#5A4250', letterSpacing: -0.4 },
+  brandMark: { width: 84, height: 84 },
+  brandWordmark: { marginTop: spacing.md, alignItems: 'center', paddingHorizontal: spacing.md },
+  brandName: { fontSize: 28, fontWeight: '800', letterSpacing: -0.7 },
+  brandTag: {
+    marginTop: 6,
+    fontSize: 11,
+    letterSpacing: 1,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  heroImageWrap: {
+    borderRadius: 22,
+    borderWidth: 1,
+    overflow: 'hidden',
+    width: '100%',
+    aspectRatio: 1,
+    marginTop: spacing.sm,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
   hero: {
     marginTop: spacing.xl,
     alignItems: 'center',
   },
-  headline: {
-    color: '#141414',
-    textAlign: 'center',
-    fontSize: 40,
-    lineHeight: 44,
-    fontWeight: '800',
-    letterSpacing: -1.1,
-  },
-  sub: { marginTop: spacing.md, fontSize: 17, lineHeight: 26, maxWidth: 320, textAlign: 'center', color: '#4F4B46' },
-  previewWrap: {
-    marginTop: spacing.xl,
-    borderRadius: 24,
-    overflow: 'hidden',
+  socialPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#E7DED4',
-    shadowColor: 'rgba(45, 36, 29, 0.16)',
-    shadowOffset: { width: 0, height: 8 },
+    marginBottom: spacing.md,
+  },
+  socialPillText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.15, textAlign: 'center' },
+  headline: {
+    textAlign: 'center',
+    fontSize: 30,
+    lineHeight: 36,
+    fontWeight: '800',
+    letterSpacing: -0.9,
+    maxWidth: 360,
+  },
+  sub: { marginTop: spacing.md, fontSize: 16, lineHeight: 24, maxWidth: 360, textAlign: 'center' },
+  stackCard: {
+    marginTop: spacing.xl,
+    borderRadius: 22,
+    padding: spacing.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 1,
-    shadowRadius: 16,
+    shadowRadius: 24,
     elevation: 6,
   },
-  previewImage: {
-    width: '100%',
-    aspectRatio: 1.68,
-    backgroundColor: '#EAE5DE',
+  stackTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginBottom: spacing.xs,
   },
-  previewOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.06)',
+  pillar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: spacing.md,
   },
+  pillarIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillarText: { flex: 1, gap: 4 },
+  pillarTitle: { fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  pillarBody: { fontSize: 14, lineHeight: 21 },
   banner: {
     padding: spacing.md,
     borderRadius: 12,
@@ -158,33 +282,21 @@ const styles = StyleSheet.create({
   primaryCta: {
     minHeight: 62,
     borderRadius: 999,
-    backgroundColor: '#9C452E',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    shadowColor: 'rgba(37, 20, 14, 0.2)',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 1,
     shadowRadius: 12,
     elevation: 6,
   },
   primaryText: { color: '#FFFFFF', fontSize: 34 / 2, fontWeight: '700', letterSpacing: -0.2 },
-  secondaryCta: {
-    minHeight: 62,
-    borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: '#D7D1C8',
-    backgroundColor: '#FAF9F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryText: { color: '#5E5750', fontSize: 34 / 2, fontWeight: '600' },
   pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
   signInRow: { marginTop: spacing.md, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  signInMuted: { fontSize: 32 / 2, color: '#4B4743' },
-  signInLink: { fontSize: 32 / 2, color: '#141414', fontWeight: '800' },
+  signInMuted: { fontSize: 32 / 2 },
+  signInLink: { fontSize: 32 / 2, fontWeight: '800' },
   legalRow: { marginTop: spacing.md, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  legalLink: { color: '#7C756C', fontSize: 14, textDecorationLine: 'underline' },
-  legalDot: { color: '#9D978D', fontSize: 14 },
+  legalLink: { fontSize: 14, textDecorationLine: 'underline' },
+  legalDot: { fontSize: 14 },
 });

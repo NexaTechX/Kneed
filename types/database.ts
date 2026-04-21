@@ -1,17 +1,4 @@
-export type UserRole = 'client' | 'provider';
-
-export type ServiceType = 'swedish' | 'deep_tissue' | 'sports' | 'thai' | 'prenatal';
-
-export type DurationMin = 30 | 60 | 90 | 120;
-
-export type LocationType = 'studio' | 'mobile' | 'both';
-
-export type BookingStatus =
-  | 'pending'
-  | 'confirmed'
-  | 'completed'
-  | 'cancelled'
-  | 'disputed';
+export type UserRole = 'client' | 'creator' | 'admin';
 
 export interface Profile {
   id: string;
@@ -21,74 +8,102 @@ export interface Profile {
   avatar_url: string | null;
   phone: string | null;
   onboarding_complete: boolean;
+  is_age_verified?: boolean;
+  accepted_content_policy_at?: string | null;
+  account_status?: 'active' | 'under_review' | 'suspended' | 'banned';
+  is_kyc_verified?: boolean;
+  kyc_verified_at?: string | null;
+  gender?: string | null;
+  headline?: string | null;
+  creator_bio?: string | null;
+  cover_image_url?: string | null;
+  private_room_lat?: number | null;
+  private_room_lng?: number | null;
+  private_room_rate_cents?: number;
+  private_room_location_updated_at?: string | null;
   created_at: string;
 }
 
-export interface Provider {
+export interface CreatorPost {
   id: string;
-  license_number: string;
-  license_image: string | null;
-  years_exp: number;
-  bio: string | null;
-  studio_address: string | null;
-  travel_radius_miles: number;
-  lat: number | null;
-  lng: number | null;
-  is_verified: boolean;
-  average_rating: number;
-  total_reviews: number;
-  created_at: string;
-}
-
-export interface Service {
-  id: string;
-  provider_id: string;
-  type: ServiceType;
-  duration_min: DurationMin;
+  creator_id: string;
+  title: string | null;
+  body: string | null;
+  media_type: 'none' | 'image' | 'video' | null;
+  media_url: string | null;
+  thumbnail_url: string | null;
+  visibility: 'public' | 'private';
+  is_paid: boolean;
   price_cents: number;
-  location_type: LocationType;
-  is_active: boolean;
+  monetization_status: 'none' | 'pending_review' | 'approved' | 'rejected';
+  status: 'draft' | 'published' | 'removed' | 'flagged' | 'rejected';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SocialFollow {
+  follower_id: string;
+  followed_id: string;
   created_at: string;
 }
 
-export interface Availability {
+export interface PrivateRoomSession {
   id: string;
-  provider_id: string;
-  day_of_week: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  start_time: string;
-  end_time: string;
-  is_active: boolean;
-}
-
-export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
-
-export interface Booking {
-  id: string;
-  client_id: string;
-  provider_id: string;
-  service_id: string;
-  scheduled_at: string;
-  location_type: 'studio' | 'mobile';
-  address: string | null;
-  status: BookingStatus;
-  price_cents: number;
-  platform_fee_cents: number;
-  total_cents: number;
+  booked_user_id: string;
+  booker_user_id: string;
+  starts_at: string;
+  duration_min: number;
   notes: string | null;
+  amount_cents: number;
+  platform_fee_cents: number;
+  payee_net_cents: number;
+  status: 'pending' | 'accepted' | 'declined' | 'paid' | 'completed' | 'cancelled';
   created_at: string;
-  cancelled_at: string | null;
-  cancellation_reason: string | null;
-  paystack_reference: string | null;
-  payment_status: PaymentStatus;
 }
 
-export interface Review {
+export interface WalletAccount {
+  owner_id: string;
+  owner_type: 'user' | 'creator' | 'platform';
+  available_cents: number;
+  pending_cents: number;
+  lifetime_earned_cents: number;
+  updated_at: string;
+}
+
+export interface WalletTransaction {
   id: string;
-  booking_id: string;
-  client_id: string;
-  provider_id: string;
-  rating: 1 | 2 | 3 | 4 | 5;
-  comment: string | null;
+  owner_id: string;
+  direction: 'credit' | 'debit';
+  entry_type: 'purchase' | 'tip' | 'private_room' | 'fee' | 'refund' | 'withdrawal' | 'adjustment';
+  amount_cents: number;
+  status: 'pending' | 'posted' | 'reversed';
+  reference: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface WithdrawalRequest {
+  id: string;
+  user_id: string;
+  amount_cents: number;
+  destination: string;
+  status: 'pending' | 'approved' | 'rejected' | 'paid' | 'cancelled';
+  admin_reason: string | null;
+  payout_reference: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface ContentPurchase {
+  id: string;
+  post_id: string;
+  buyer_id: string;
+  creator_id: string;
+  amount_cents: number;
+  platform_fee_cents: number;
+  net_cents: number;
+  status: string;
   created_at: string;
 }
 
@@ -100,53 +115,40 @@ export interface Database {
         Insert: Partial<Profile> & { id: string; email: string };
         Update: Partial<Profile>;
       };
-      providers: {
-        Row: Provider;
-        Insert: Partial<Provider> & { id: string };
-        Update: Partial<Provider>;
+      creator_posts: {
+        Row: CreatorPost;
+        Insert: Partial<CreatorPost> & { id?: string; creator_id: string };
+        Update: Partial<CreatorPost>;
       };
-      services: {
-        Row: Service;
-        Insert: Omit<Service, 'id' | 'created_at'> & { id?: string };
-        Update: Partial<Service>;
+      social_follows: {
+        Row: SocialFollow;
+        Insert: SocialFollow;
+        Update: Partial<SocialFollow>;
       };
-      availability: {
-        Row: Availability;
-        Insert: Omit<Availability, 'id'> & { id?: string };
-        Update: Partial<Availability>;
+      private_room_sessions: {
+        Row: PrivateRoomSession;
+        Insert: Partial<PrivateRoomSession> & { id?: string };
+        Update: Partial<PrivateRoomSession>;
       };
-      bookings: {
-        Row: Booking;
-        Insert: Omit<Booking, 'id' | 'created_at' | 'paystack_reference' | 'payment_status'> & {
-          id?: string;
-          paystack_reference?: string | null;
-          payment_status?: PaymentStatus;
-        };
-        Update: Partial<Booking>;
+      wallet_accounts: {
+        Row: WalletAccount;
+        Insert: Partial<WalletAccount> & { owner_id: string };
+        Update: Partial<WalletAccount>;
       };
-      reviews: {
-        Row: Review;
-        Insert: Omit<Review, 'id' | 'created_at'> & { id?: string };
-        Update: Partial<Review>;
+      wallet_transactions: {
+        Row: WalletTransaction;
+        Insert: Partial<WalletTransaction> & { id?: string };
+        Update: Partial<WalletTransaction>;
       };
-    };
-    Functions: {
-      search_providers: {
-        Args: {
-          user_lat: number;
-          user_lng: number;
-          radius_miles: number;
-          filter_service_type: string | null;
-        };
-        Returns: {
-          provider_id: string;
-          distance_miles: number;
-          min_price_cents: number;
-          full_name: string;
-          average_rating: number;
-          total_reviews: number;
-          is_verified: boolean;
-        }[];
+      withdrawal_requests: {
+        Row: WithdrawalRequest;
+        Insert: Partial<WithdrawalRequest> & { id?: string };
+        Update: Partial<WithdrawalRequest>;
+      };
+      content_purchases: {
+        Row: ContentPurchase;
+        Insert: Partial<ContentPurchase> & { id?: string };
+        Update: Partial<ContentPurchase>;
       };
     };
   };

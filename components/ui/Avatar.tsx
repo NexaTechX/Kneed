@@ -13,13 +13,13 @@ export function Avatar({ uri, name, size = 56 }: { uri?: string | null; name: st
           height: size,
           borderRadius: size / 2,
           backgroundColor: t.primaryMuted,
-          borderColor: t.border,
+          borderColor: t.borderStrong,
         },
       ]}>
       {uri ? (
         <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />
       ) : (
-        <Text style={[styles.initial, { color: t.primary }, { fontSize: Math.round(size * 0.36) }]}>{initial}</Text>
+        <Text style={[styles.initial, { color: t.text }, { fontSize: Math.round(size * 0.36) }]}>{initial}</Text>
       )}
     </View>
   );

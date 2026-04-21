@@ -15,6 +15,56 @@ async function hmacSha512Hex(secret: string, message: string): Promise<string> {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+function platformFeePpv(amountCents: number): number {
+  return Math.round(amountCents * 0.4);
+}
+
+function platformFeePrivateRoom(amountCents: number): number {
+  return Math.round(amountCents * 0.1);
+}
+
+async function creditWallet(
+  admin: SupabaseClient,
+  ownerId: string,
+  ownerType: 'user' | 'creator',
+  amountCents: number,
+  entryType: 'purchase' | 'private_room',
+  reference: string,
+) {
+  if (amountCents <= 0) return;
+  const { data: existing } = await admin.from('wallet_accounts').select('owner_id').eq('owner_id', ownerId).maybeSingle();
+  if (!existing) {
+    await admin.from('wallet_accounts').insert({
+      owner_id: ownerId,
+      owner_type: ownerType,
+      available_cents: 0,
+      pending_cents: 0,
+      lifetime_earned_cents: 0,
+    });
+  }
+  const { data: w } = await admin.from('wallet_accounts').select('*').eq('owner_id', ownerId).maybeSingle();
+  const avail = Number(w?.available_cents ?? 0);
+  const life = Number(w?.lifetime_earned_cents ?? 0);
+  await admin
+    .from('wallet_accounts')
+    .update({
+      available_cents: avail + amountCents,
+      lifetime_earned_cents: life + amountCents,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('owner_id', ownerId);
+
+  await admin.from('wallet_transactions').insert({
+    owner_id: ownerId,
+    direction: 'credit',
+    entry_type: entryType,
+    amount_cents: amountCents,
+    status: 'posted',
+    reference,
+    metadata: {},
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -40,8 +90,8 @@ Deno.serve(async (req) => {
     event?: string;
     data?: {
       reference?: string;
-      metadata?: { booking_id?: string };
       status?: string;
+      metadata?: Record<string, string | undefined>;
     };
   };
   try {
@@ -53,41 +103,126 @@ Deno.serve(async (req) => {
   const event = payload.event;
   const data = payload.data;
   const reference = data?.reference;
-  const bookingId = data?.metadata?.booking_id;
+  const meta = data?.metadata ?? {};
 
-  if (event === 'charge.success' && reference) {
-    const admin = createClient(supabaseUrl, serviceKey);
-    let q = admin.from('bookings').update({ payment_status: 'paid' }).eq('paystack_reference', reference);
-    if (bookingId) {
-      q = q.eq('id', bookingId);
+  if (event !== 'charge.success' || !reference || data?.status !== 'success') {
+    return new Response(JSON.stringify({ received: true }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const admin = createClient(supabaseUrl, serviceKey);
+  const kind = meta.kind ?? (meta as { Kind?: string }).Kind;
+  const postId = meta.post_id ?? (meta as { post_id?: string }).post_id;
+  const buyerId = meta.buyer_id ?? (meta as { buyer_id?: string }).buyer_id;
+
+  if (kind === 'ppv' && postId && buyerId) {
+    const { data: existing } = await admin
+      .from('content_purchases')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('buyer_id', buyerId)
+      .maybeSingle();
+    if (existing) {
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
-    const { error } = await q;
-    if (error) {
-      console.error('webhook update error', error.message);
+
+    const { data: post } = await admin
+      .from('creator_posts')
+      .select('id, creator_id, price_cents, is_paid')
+      .eq('id', postId)
+      .maybeSingle();
+    if (!post?.is_paid || !post.creator_id) {
+      return new Response(JSON.stringify({ error: 'Invalid post' }), { status: 400 });
+    }
+
+    const amount = post.price_cents;
+    const fee = platformFeePpv(amount);
+    const net = amount - fee;
+
+    const { error: insErr } = await admin.from('content_purchases').insert({
+      post_id: postId,
+      buyer_id: buyerId,
+      creator_id: post.creator_id,
+      amount_cents: amount,
+      platform_fee_cents: fee,
+      net_cents: net,
+      status: 'paid',
+    });
+    if (insErr) {
+      console.error('content_purchases insert', insErr.message);
+      return new Response('Insert failed', { status: 500 });
+    }
+
+    const { error: grantErr } = await admin.from('post_access_grants').insert({
+      post_id: postId,
+      user_id: buyerId,
+      source: 'purchase',
+    });
+    if (grantErr && !grantErr.message.includes('duplicate') && !grantErr.code?.includes('23505')) {
+      console.error('post_access_grants', grantErr.message);
+    }
+
+    await creditWallet(admin, post.creator_id, 'creator', net, 'purchase', reference);
+
+    const { data: tokens } = await admin.from('push_tokens').select('token').eq('user_id', post.creator_id);
+    await sendExpoPush(
+      (tokens ?? []).map((row) => ({
+        to: row.token,
+        title: 'New purchase',
+        body: 'Someone unlocked your paid post.',
+        sound: 'default' as const,
+        data: { post_id: postId, kind: 'ppv_paid' },
+      })),
+    );
+  } else if (kind === 'private_room' && (meta.session_id ?? (meta as { session_id?: string }).session_id)) {
+    const sessionId = meta.session_id ?? (meta as { session_id?: string }).session_id!;
+    const { data: session } = await admin
+      .from('private_room_sessions')
+      .select('id, booked_user_id, amount_cents, status, platform_fee_cents')
+      .eq('id', sessionId)
+      .maybeSingle();
+    if (!session) {
+      return new Response(JSON.stringify({ error: 'Session not found' }), { status: 400 });
+    }
+    if (session.status === 'paid' && (session.platform_fee_cents ?? 0) > 0) {
+      return new Response(JSON.stringify({ received: true, duplicate: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const amount = session.amount_cents;
+    const fee = platformFeePrivateRoom(amount);
+    const net = amount - fee;
+
+    const { error: upErr } = await admin
+      .from('private_room_sessions')
+      .update({
+        status: 'paid',
+        platform_fee_cents: fee,
+        payee_net_cents: net,
+      })
+      .eq('id', sessionId)
+      .in('status', ['pending', 'accepted']);
+    if (upErr) {
+      console.error('private_room update', upErr.message);
       return new Response('Update failed', { status: 500 });
     }
 
-    const { data: paidBooking } = await admin
-      .from('bookings')
-      .select('id, provider_id')
-      .eq('paystack_reference', reference)
-      .maybeSingle();
+    await creditWallet(admin, session.booked_user_id, 'user', net, 'private_room', reference);
 
-    if (paidBooking?.provider_id) {
-      const { data: tokens } = await admin
-        .from('push_tokens')
-        .select('token')
-        .eq('user_id', paidBooking.provider_id);
-      await sendExpoPush(
-        (tokens ?? []).map((row) => ({
-          to: row.token,
-          title: 'Payment received',
-          body: 'A client paid — you can confirm this booking in the app.',
-          sound: 'default' as const,
-          data: { booking_id: paidBooking.id, kind: 'payment_received' },
-        })),
-      );
-    }
+    const { data: tokens } = await admin.from('push_tokens').select('token').eq('user_id', session.booked_user_id);
+    await sendExpoPush(
+      (tokens ?? []).map((row) => ({
+        to: row.token,
+        title: 'Private room booking paid',
+        body: 'A booking for your listing was paid.',
+        sound: 'default' as const,
+        data: { session_id: sessionId, kind: 'private_room_paid' },
+      })),
+    );
   }
 
   return new Response(JSON.stringify({ received: true }), {

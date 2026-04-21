@@ -24,28 +24,6 @@ export async function updateProfile(
   return data as Profile;
 }
 
-export async function upsertProviderRow(
-  userId: string,
-  patch: Partial<{
-    license_number: string;
-    license_image: string | null;
-    years_exp: number;
-    bio: string | null;
-    studio_address: string | null;
-    travel_radius_miles: number;
-    lat: number | null;
-    lng: number | null;
-  }>,
-) {
-  const { data, error } = await supabase
-    .from('providers')
-    .upsert({ id: userId, ...patch })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 export async function setRole(userId: string, role: UserRole) {
   return updateProfile(userId, { role });
 }

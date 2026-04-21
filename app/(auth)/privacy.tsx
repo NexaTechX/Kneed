@@ -39,7 +39,7 @@ export default function PrivacyScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>1. What we collect</Text>
           <Text style={styles.p}>
-            Account details, profile info, booking history, location signals for nearby discovery, device tokens for
+            Account details, profile info, content you post, location when you enable it for Private Room, device tokens for
             notifications, and payment metadata needed to complete transactions.
           </Text>
         </View>
@@ -47,7 +47,7 @@ export default function PrivacyScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>2. Why we collect it</Text>
           <Text style={styles.p}>
-            Data is used to match clients with providers, process bookings and payments, provide support, prevent fraud,
+            Data is used to operate the social feed, private-room matching, payments and payouts, provide support, prevent fraud,
             and improve service reliability.
           </Text>
         </View>

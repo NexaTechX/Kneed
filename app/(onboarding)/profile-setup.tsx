@@ -36,11 +36,7 @@ export default function ProfileSetupScreen() {
       });
       const fresh = await fetchProfile(user.id);
       if (fresh) useAuthStore.getState().setProfile(fresh);
-      if (profile?.role === 'provider') {
-        router.replace('/(onboarding)/provider-verify');
-      } else {
-        router.replace('/(client)/(tabs)/discover');
-      }
+      router.replace('/(client)/(tabs)/feed');
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Could not save');
     } finally {
@@ -53,7 +49,7 @@ export default function ProfileSetupScreen() {
       <Header title="Your profile" showBack />
       <View style={styles.wrap}>
         <Text style={[styles.intro, { color: t.textSecondary }]}>
-          Add your name so partners know who they are meeting.
+          Add your name so people recognize you on the feed.
         </Text>
         <Card style={styles.form}>
           <Text style={styles.label}>Full name</Text>

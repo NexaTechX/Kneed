@@ -6,11 +6,10 @@ export type PaystackInitResult =
   | { ok: true }
   | { ok: false; message: string };
 
-/** Start Paystack hosted checkout for a booking (requires deployed `paystack-initialize` Edge Function). */
-export async function openPaystackCheckoutForBooking(bookingId: string): Promise<PaystackInitResult> {
+async function openCheckout(body: Record<string, unknown>): Promise<PaystackInitResult> {
   const { data, error } = await supabase.functions.invoke<{ authorization_url?: string; error?: string }>(
     'paystack-initialize',
-    { body: { booking_id: bookingId } },
+    { body },
   );
 
   if (error) {
@@ -34,4 +33,14 @@ export async function openPaystackCheckoutForBooking(bookingId: string): Promise
     return { ok: false, message: 'Checkout closed' };
   }
   return { ok: false, message: 'Could not complete checkout' };
+}
+
+/** Pay-to-unlock a feed post (40% platform fee applied on server webhook). */
+export async function openPaystackCheckoutForPpv(postId: string): Promise<PaystackInitResult> {
+  return openCheckout({ kind: 'ppv', post_id: postId });
+}
+
+/** Pay for a private room session (10% platform fee on webhook). */
+export async function openPaystackCheckoutForPrivateRoom(sessionId: string): Promise<PaystackInitResult> {
+  return openCheckout({ kind: 'private_room', session_id: sessionId });
 }

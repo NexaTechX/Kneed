@@ -10,7 +10,7 @@ import {
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { config } from '@/constants/config';
 
-type Variant = 'coral' | 'dustyrose' | 'outline';
+type Variant = 'coral' | 'dustyrose' | 'outline' | 'ghost';
 
 export function Button({
   title,
@@ -31,10 +31,11 @@ export function Button({
   const t = useAppTheme();
   const isOutline = variant === 'outline';
   const isSecondary = variant === 'dustyrose';
+  const isGhost = variant === 'ghost';
 
-  const bg = isOutline ? 'transparent' : isSecondary ? t.secondary : t.primary;
-  const borderColor = isOutline ? t.borderStrong : 'transparent';
-  const color = isOutline ? t.primary : isSecondary ? t.onSecondary : t.onPrimary;
+  const bg = isGhost ? 'transparent' : isOutline ? 'transparent' : isSecondary ? t.secondary : t.primary;
+  const borderColor = isGhost ? 'transparent' : isOutline ? t.borderStrong : 'transparent';
+  const color = isGhost ? t.textSecondary : isOutline ? t.primary : isSecondary ? t.onSecondary : t.onPrimary;
 
   return (
     <Pressable
@@ -47,9 +48,9 @@ export function Button({
           backgroundColor: bg,
           borderColor,
           borderWidth: isOutline ? 1.5 : 0,
-          shadowColor: !isOutline && !disabled && !loading ? t.shadow : 'transparent',
+          shadowColor: !isOutline && !isGhost && !disabled && !loading ? t.shadow : 'transparent',
         },
-        !isOutline && !disabled && !loading && styles.shadow,
+        !isOutline && !isGhost && !disabled && !loading && styles.shadow,
         (disabled || loading) && styles.disabled,
         pressed && styles.pressed,
         style,
@@ -67,19 +68,19 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     minHeight: config.minTouchSize,
-    paddingHorizontal: 22,
-    borderRadius: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   shadow: {
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
+    shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 4,
   },
   text: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     letterSpacing: -0.2,
   },

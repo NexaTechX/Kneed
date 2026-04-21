@@ -1,4 +1,4 @@
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
 import {
@@ -40,8 +40,8 @@ const SIGNUP = {
 export default function RegisterScreen() {
   const router = useRouter();
   const styles = useMemo(() => createStyles(), []);
-  const { role: roleParam } = useLocalSearchParams<{ role?: string }>();
-  const role = useMemo(() => (roleParam === 'provider' ? 'provider' : 'client') as UserRole, [roleParam]);
+  /** Same app for everyone — browse-only or posting is a choice in the product, not an account type. */
+  const role = 'client' as UserRole;
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -92,15 +92,6 @@ export default function RegisterScreen() {
         .eq('id', uid);
       if (pe) throw pe;
 
-      if (role === 'provider') {
-        const { error: ie } = await supabase.from('providers').insert({
-          id: uid,
-          license_number: '',
-          years_exp: 0,
-        });
-        if (ie) throw ie;
-      }
-
       router.replace('/');
     } catch (e: unknown) {
       Alert.alert('Sign up failed', e instanceof Error ? e.message : 'Unknown error');
@@ -130,12 +121,6 @@ export default function RegisterScreen() {
           </View>
 
           <View style={[styles.card, { backgroundColor: cardBg, shadowColor: SIGNUP.shadow }]}>
-            <View style={[styles.roleChip, { backgroundColor: inputBg }]}>
-              <Text style={[styles.roleChipText, { color: muted }]}>
-                Joining as <Text style={{ fontWeight: '800', color: accent }}>{role}</Text>
-              </Text>
-            </View>
-
             <FieldLabel color={muted}>Full name</FieldLabel>
             <TextInput
               value={fullName}
@@ -260,22 +245,22 @@ export default function RegisterScreen() {
             <Text style={[styles.kicker, { color: accent }]}>WELCOME TO KNEAD</Text>
             <Text style={[styles.heroTitle, { color: text }]}>Create your account</Text>
             <Text style={[styles.heroBody, { color: muted }]}>
-              Join a community of wellness seekers and book massage that fits your life—calm, curated, and close to home.
+              Share free posts, add pay-to-unlock when you are ready, and use Private Room after verification.
             </Text>
 
             <View style={[styles.featureCard, { backgroundColor: SIGNUP.featureBeige }]}>
               <FontAwesome name="leaf" size={20} color={accent} />
-              <Text style={[styles.featureTitle, { color: text }]}>Curated sessions</Text>
+              <Text style={[styles.featureTitle, { color: text }]}>Creator earnings</Text>
               <Text style={[styles.featureDesc, { color: muted }]}>
-                Personalized provider matches for your pace and preferences.
+                Transparent splits: 40% platform on paid posts, 10% on private-room bookings.
               </Text>
             </View>
 
             <View style={[styles.featureCard, styles.featureCardWhite, { backgroundColor: cardBg, borderColor: border }]}>
               <FontAwesome name="magic" size={20} color={accent} />
-              <Text style={[styles.featureTitle, { color: text }]}>Effortless booking</Text>
+              <Text style={[styles.featureTitle, { color: text }]}>Safety & review</Text>
               <Text style={[styles.featureDesc, { color: muted }]}>
-                An editorial-first flow so scheduling stays light and clear.
+                Paid feed posts are reviewed before they go live. Private rooms stay KYC-gated.
               </Text>
             </View>
 
@@ -285,7 +270,7 @@ export default function RegisterScreen() {
                 <View style={[styles.avatar, styles.avatar2]} />
                 <View style={[styles.avatar, styles.avatar3]} />
               </View>
-              <Text style={[styles.proofText, { color: muted }]}>Join 2,400+ members today</Text>
+              <Text style={[styles.proofText, { color: muted }]}>Welcome — set up your profile in a minute.</Text>
             </View>
           </View>
         </ScrollView>
@@ -332,17 +317,6 @@ function createStyles() {
       shadowOpacity: 0.08,
       shadowRadius: 24,
       elevation: 6,
-    },
-    roleChip: {
-      alignSelf: 'flex-start',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: 14,
-      marginBottom: spacing.md,
-    },
-    roleChipText: {
-      fontSize: 14,
-      lineHeight: 20,
     },
     input: {
       minHeight: 52,

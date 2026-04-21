@@ -32,23 +32,23 @@ export default function TermsScreen() {
           <Text style={styles.kicker}>KNEAD LEGAL</Text>
           <Text style={styles.title}>Terms, made clear.</Text>
           <Text style={styles.subtitle}>
-            These terms explain how bookings, payments, cancellations, and provider-client interactions work in Knead.
+            These terms explain how content, payments, private-room bookings, and platform fees work in Knead.
           </Text>
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>1. Booking & Services</Text>
+          <Text style={styles.sectionTitle}>1. Platform & content</Text>
           <Text style={styles.p}>
-            Knead connects clients with independent massage and wellness providers. Providers are responsible for service
-            quality, credentials, punctuality, and local compliance.
+            Knead provides a creator platform with a public feed, optional pay-to-unlock posts, and KYC-gated private-room
+            bookings. You are responsible for content you publish and for compliance with applicable laws.
           </Text>
         </View>
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>2. Payments & Refunds</Text>
           <Text style={styles.p}>
-            Payments are processed through secure third-party providers such as Paystack. Cancellation windows,
-            rescheduling rules, and refund eligibility depend on your policy and provider terms.
+            Payments are processed through secure third-party providers such as Paystack. Refunds and disputes are handled
+            according to platform rules and the payment provider where applicable.
           </Text>
         </View>
 
