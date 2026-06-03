@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
@@ -7,58 +8,78 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeView } from '@/components/layout/SafeView';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { Card } from '@/components/ui/Card';
 import type { AppTheme } from '@/constants/theme';
 import { spacing } from '@/constants/spacing';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth, signOut } from '@/hooks/useAuth';
-import { fetchProfile, updateProfile } from '@/lib/auth';
+import { updateProfile } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
-import { useAuthStore } from '@/stores/authStore';
+
+type SocialUser = {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+};
 
 export default function ClientProfileScreen() {
   const router = useRouter();
   const t = useAppTheme();
   const styles = useMemo(() => createStyles(t), [t]);
   const { profile, user } = useAuth();
-  const setProfile = useAuthStore((s) => s.setProfile);
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const { data: social } = useQuery({
+    queryKey: ['profile-social', user?.id],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const userId = user!.id;
+      const [followersRes, followingRes] = await Promise.all([
+        supabase.from('social_follows').select('follower_id').eq('followed_id', userId),
+        supabase.from('social_follows').select('followed_id').eq('follower_id', userId),
+      ]);
+      if (followersRes.error) throw followersRes.error;
+      if (followingRes.error) throw followingRes.error;
+
+      const followerIds = (followersRes.data ?? []).map((r) => r.follower_id as string);
+      const followingIds = (followingRes.data ?? []).map((r) => r.followed_id as string);
+      const followingSet = new Set(followingIds);
+      const friendsIds = followerIds.filter((id) => followingSet.has(id));
+      const uniqueIds = [...new Set([...followerIds, ...followingIds])];
+
+      let profileMap: Record<string, SocialUser> = {};
+      if (uniqueIds.length > 0) {
+        const { data: profs, error } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', uniqueIds);
+        if (error) throw error;
+        for (const p of profs ?? []) {
+          profileMap[p.id] = {
+            id: p.id,
+            full_name: p.full_name,
+            avatar_url: p.avatar_url,
+          };
+        }
+      }
+
+      const mapUsers = (ids: string[]) =>
+        ids
+          .map((id) => profileMap[id])
+          .filter(Boolean)
+          .sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? ''));
+
+      return {
+        followers: mapUsers(followerIds),
+        following: mapUsers(followingIds),
+        friends: mapUsers(friendsIds),
+      };
+    },
+  });
 
   useEffect(() => {
     if (!profile) return;
-    setFullName(profile.full_name ?? '');
-    setPhone(profile.phone ?? '');
     setAvatarUrl(profile.avatar_url);
   }, [profile]);
-
-  const onSave = async () => {
-    if (!user) return;
-    const name = fullName.trim();
-    if (!name) {
-      Alert.alert('Name required', 'Please enter your name.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await updateProfile(user.id, {
-        full_name: name,
-        phone: phone.trim() || null,
-      });
-      const fresh = await fetchProfile(user.id);
-      if (fresh) setProfile(fresh);
-      Alert.alert('Saved', 'Your profile was updated.');
-    } catch (e: unknown) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Could not save');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const pickAvatar = async () => {
     if (!user) return;
@@ -89,8 +110,6 @@ export default function ClientProfileScreen() {
       const publicUrl = pub.publicUrl;
       await updateProfile(user.id, { avatar_url: publicUrl });
       setAvatarUrl(publicUrl);
-      const fresh = await fetchProfile(user.id);
-      if (fresh) setProfile(fresh);
       Alert.alert('Photo updated');
     } catch (e: unknown) {
       Alert.alert('Upload failed', e instanceof Error ? e.message : 'Error');
@@ -104,6 +123,9 @@ export default function ClientProfileScreen() {
   };
 
   const kycOk = profile?.is_kyc_verified === true;
+  const followers = social?.followers ?? [];
+  const following = social?.following ?? [];
+  const friends = social?.friends ?? [];
 
   return (
     <SafeView style={{ backgroundColor: t.background }}>
@@ -123,6 +145,29 @@ export default function ClientProfileScreen() {
           </View>
           <Text style={[styles.name, { color: t.text }]}>{profile?.full_name || 'Your profile'}</Text>
           <Text style={[styles.email, { color: t.textSecondary }]}>{profile?.email}</Text>
+          <View style={styles.heroStatsRow}>
+            <Pressable
+              style={styles.heroStat}
+              onPress={() => router.push({ pathname: '/(client)/social-connections', params: { tab: 'followers' } })}
+              accessibilityRole="button">
+              <Text style={[styles.heroStatCount, { color: t.text }]}>{followers.length}</Text>
+              <Text style={[styles.heroStatLabel, { color: t.textTertiary }]}>Followers</Text>
+            </Pressable>
+            <Pressable
+              style={styles.heroStat}
+              onPress={() => router.push({ pathname: '/(client)/social-connections', params: { tab: 'following' } })}
+              accessibilityRole="button">
+              <Text style={[styles.heroStatCount, { color: t.text }]}>{following.length}</Text>
+              <Text style={[styles.heroStatLabel, { color: t.textTertiary }]}>Following</Text>
+            </Pressable>
+            <Pressable
+              style={styles.heroStat}
+              onPress={() => router.push({ pathname: '/(client)/social-connections', params: { tab: 'friends' } })}
+              accessibilityRole="button">
+              <Text style={[styles.heroStatCount, { color: t.text }]}>{friends.length}</Text>
+              <Text style={[styles.heroStatLabel, { color: t.textTertiary }]}>Friends</Text>
+            </Pressable>
+          </View>
           <View style={[styles.kycPill, { backgroundColor: kycOk ? `${t.success}18` : t.surfaceMuted, borderColor: t.border }]}>
             <Ionicons name={kycOk ? 'shield-checkmark' : 'shield-outline'} size={14} color={kycOk ? t.success : t.textTertiary} />
             <Text style={[styles.kycText, { color: kycOk ? t.success : t.textSecondary }]}>
@@ -132,17 +177,14 @@ export default function ClientProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: t.text }]}>About you</Text>
-          <Card style={styles.formCard}>
-            <Text style={[styles.helper, { color: t.textSecondary }]}>
-              Verified identity is required for paid posts and Private Room bookings.
-            </Text>
-            <Text style={[styles.label, { color: t.textTertiary }]}>Name</Text>
-            <Input value={fullName} onChangeText={setFullName} placeholder="Your name" />
-            <Text style={[styles.label, { color: t.textTertiary }]}>Phone</Text>
-            <Input value={phone} onChangeText={setPhone} placeholder="Optional" keyboardType="phone-pad" />
-            <Button title="Save changes" loading={saving} onPress={() => void onSave()} style={{ marginTop: spacing.md }} />
-          </Card>
+          <Text style={[styles.sectionTitle, { color: t.text }]}>Account</Text>
+          <PressableCard
+            icon="create-outline"
+            title="Edit profile & KYC"
+            subtitle="Update your details and apply for verification"
+            onPress={() => router.push('/(client)/edit-profile')}
+            t={t}
+          />
         </View>
 
         <View style={styles.section}>
@@ -251,6 +293,10 @@ function createStyles(t: AppTheme) {
     avatarBlock: { alignItems: 'center', gap: spacing.sm, marginTop: -56 },
     name: { fontSize: 24, fontWeight: '700', letterSpacing: -0.5, textAlign: 'center' },
     email: { fontSize: 14, textAlign: 'center' },
+    heroStatsRow: { flexDirection: 'row', width: '100%', marginTop: spacing.xs },
+    heroStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.xs },
+    heroStatCount: { fontSize: 18, fontWeight: '700' },
+    heroStatLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.7 },
     kycPill: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -264,11 +310,6 @@ function createStyles(t: AppTheme) {
     kycText: { fontSize: 12, fontWeight: '600' },
     section: { marginTop: spacing.xl, paddingHorizontal: spacing.lg, gap: spacing.sm },
     sectionTitle: { fontSize: 13, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' },
-    formCard: {
-      gap: spacing.xs,
-    },
-    helper: { fontSize: 14, lineHeight: 20, marginBottom: spacing.sm },
-    label: { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: spacing.xs },
     actionGrid: { gap: spacing.sm },
     footer: { paddingHorizontal: spacing.lg, marginTop: spacing.xl },
   });

@@ -1,8 +1,8 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { formatDistanceToNow } from 'date-fns';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +20,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { ReportSheet, type ReportTargetType } from '@/components/ReportSheet';
 import { SafeView } from '@/components/layout/SafeView';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -30,7 +31,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { openPaystackCheckoutForPpv } from '@/lib/paystack';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseErrors';
+import { isPublicUrl, resolvePostMediaUrl } from '@/lib/media';
+import { fetchUnreadCount } from '@/lib/notifications';
 import { toNaira } from '@/lib/social';
+
+const PAGE_SIZE = 20;
 
 type FeedPost = {
   id: string;
@@ -68,6 +73,9 @@ export default function FeedScreen() {
   const t = useAppTheme();
   const styles = useMemo(() => createStyles(t), [t]);
   const [refreshing, setRefreshing] = useState(false);
+  // Signed URLs for private-bucket media, keyed by post id (only for posts the viewer can see).
+  const [resolvedMedia, setResolvedMedia] = useState<Record<string, string>>({});
+  const [reportTarget, setReportTarget] = useState<{ type: ReportTargetType; id: string } | null>(null);
 
   const { data: accessPostIds = [] } = useQuery({
     queryKey: ['post-access-grants', user?.id],
@@ -81,6 +89,12 @@ export default function FeedScreen() {
 
   const grantSet = useMemo(() => new Set(accessPostIds), [accessPostIds]);
 
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['notifications-unread', user?.id],
+    enabled: Boolean(user),
+    queryFn: () => fetchUnreadCount(user!.id),
+  });
+
   const { data: followingIds = [] } = useQuery({
     queryKey: ['social-following', user?.id],
     enabled: Boolean(user),
@@ -93,16 +107,26 @@ export default function FeedScreen() {
 
   const followingSet = useMemo(() => new Set(followingIds), [followingIds]);
 
-  const { data: bundle, refetch, isLoading } = useQuery({
+  const {
+    data: pages,
+    refetch,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['feed-posts', user?.id],
     enabled: Boolean(user) && !authLoading && isSupabaseConfigured,
-    queryFn: async () => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       // Use the same user the hook already validated — getSession() can briefly return null after cold start
       // while the auth store already has the user, which made the feed look empty until a manual refresh.
       if (!user?.id) {
-        return { posts: [] as FeedPost[], profiles: {} as Record<string, CreatorPreview>, engagement: {} };
+        return { posts: [] as FeedPost[], profiles: {} as Record<string, CreatorPreview>, engagement: {}, nextOffset: null };
       }
       const viewerId = user.id;
+      const from = pageParam as number;
+      const to = from + PAGE_SIZE - 1;
 
       const { data, error } = await supabase
         .from('creator_posts')
@@ -111,11 +135,12 @@ export default function FeedScreen() {
         )
         .eq('status', 'published')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(from, to);
       if (error) throw error;
 
       const raw = (data ?? []) as FeedPost[];
       const posts = raw.filter((p) => p.visibility === 'public' || p.creator_id === viewerId);
+      const nextOffset = raw.length === PAGE_SIZE ? from + PAGE_SIZE : null;
 
       const ids = [...new Set(posts.map((p) => p.creator_id))];
       let profiles: Record<string, CreatorPreview> = {};
@@ -160,19 +185,29 @@ export default function FeedScreen() {
         }
       }
 
-      return { posts, profiles, engagement };
+      return { posts, profiles, engagement, nextOffset };
     },
+    getNextPageParam: (lastPage) => lastPage.nextOffset,
   });
 
   useFocusEffect(
     useCallback(() => {
       void refetch();
-    }, [refetch]),
+      void qc.invalidateQueries({ queryKey: ['notifications-unread', user?.id] });
+    }, [refetch, qc, user?.id]),
   );
 
-  const posts = bundle?.posts ?? [];
-  const profiles = bundle?.profiles ?? {};
-  const engagement = bundle?.engagement ?? {};
+  const posts = useMemo(() => (pages?.pages ?? []).flatMap((pg) => pg.posts), [pages]);
+  const profiles = useMemo(() => {
+    const out: Record<string, CreatorPreview> = {};
+    for (const pg of pages?.pages ?? []) Object.assign(out, pg.profiles);
+    return out;
+  }, [pages]);
+  const engagement = useMemo(() => {
+    const out: Record<string, PostEngagement> = {};
+    for (const pg of pages?.pages ?? []) Object.assign(out, pg.engagement);
+    return out;
+  }, [pages]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -198,23 +233,61 @@ export default function FeedScreen() {
     [grantSet, user],
   );
 
+  // Resolve signed URLs for private-bucket media the viewer is allowed to see.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const out: Record<string, string> = {};
+      for (const p of posts) {
+        if (!p.media_url || isPublicUrl(p.media_url)) continue; // public media uses its URL directly
+        if (!canViewMedia(p)) continue; // no access → never sign
+        const url = await resolvePostMediaUrl(p.media_url);
+        if (url) out[p.id] = url;
+      }
+      if (!cancelled) setResolvedMedia(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [posts, canViewMedia]);
+
+  const displayMediaUrl = useCallback(
+    (post: FeedPost): string | null => {
+      if (!post.media_url) return null;
+      return isPublicUrl(post.media_url) ? post.media_url : (resolvedMedia[post.id] ?? null);
+    },
+    [resolvedMedia],
+  );
+
   const toggleFollow = useCallback(
     async (creatorId: string) => {
       if (!user) return;
-      const { data: existing } = await supabase
-        .from('social_follows')
-        .select('follower_id')
-        .eq('follower_id', user.id)
-        .eq('followed_id', creatorId)
-        .maybeSingle();
+      if (creatorId === user.id) return;
+      try {
+        const { data: existing, error: existingError } = await supabase
+          .from('social_follows')
+          .select('follower_id')
+          .eq('follower_id', user.id)
+          .eq('followed_id', creatorId)
+          .maybeSingle();
+        if (existingError) throw existingError;
 
-      if (existing) {
-        await supabase.from('social_follows').delete().eq('follower_id', user.id).eq('followed_id', creatorId);
-      } else {
-        await supabase.from('social_follows').insert({ follower_id: user.id, followed_id: creatorId });
+        if (existing) {
+          const { error: deleteError } = await supabase
+            .from('social_follows')
+            .delete()
+            .eq('follower_id', user.id)
+            .eq('followed_id', creatorId);
+          if (deleteError) throw deleteError;
+        } else {
+          const { error: insertError } = await supabase.from('social_follows').insert({ follower_id: user.id, followed_id: creatorId });
+          if (insertError) throw insertError;
+        }
+        await qc.invalidateQueries({ queryKey: ['social-following', user.id] });
+        await refetch();
+      } catch (e: unknown) {
+        Alert.alert('Could not update follow', formatSupabaseError(e));
       }
-      await qc.invalidateQueries({ queryKey: ['social-following', user.id] });
-      await refetch();
     },
     [qc, refetch, user],
   );
@@ -324,10 +397,22 @@ export default function FeedScreen() {
     <View style={styles.headerIcons}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Notifications"
+        accessibilityLabel="Search"
         hitSlop={12}
-        onPress={() => Alert.alert('Notifications', 'Activity alerts will appear here soon.')}>
+        onPress={() => router.push('/(client)/search' as never)}>
+        <Ionicons name="search-outline" size={24} color={t.text} />
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        hitSlop={12}
+        onPress={() => router.push('/(client)/notifications' as never)}>
         <Ionicons name="notifications-outline" size={24} color={t.text} />
+        {unreadCount > 0 ? (
+          <View style={[styles.badge, { backgroundColor: t.accent, borderColor: t.background }]}>
+            <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          </View>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -340,14 +425,23 @@ export default function FeedScreen() {
       const timeAgo = formatDistanceToNow(new Date(post.created_at), { addSuffix: true });
       const isSelf = user?.id === post.creator_id;
       const isFollowing = followingSet.has(post.creator_id);
+      const mediaUri = displayMediaUrl(post);
 
       return (
         <View style={[styles.postWrap, { borderBottomColor: t.border }]}>
           <View style={styles.postTop}>
-            <Avatar name={displayName} uri={creator?.avatar_url} size={44} />
+            <Pressable
+              onPress={() => router.push(`/(client)/creator/${post.creator_id}` as never)}
+              accessibilityRole="button"
+              accessibilityLabel={`View ${displayName}'s profile`}>
+              <Avatar name={displayName} uri={creator?.avatar_url} size={44} />
+            </Pressable>
             <View style={styles.postMeta}>
               <View style={styles.nameRow}>
-                <Text style={[styles.displayName, { color: t.text }]} numberOfLines={1}>
+                <Text
+                  style={[styles.displayName, { color: t.text }]}
+                  numberOfLines={1}
+                  onPress={() => router.push(`/(client)/creator/${post.creator_id}` as never)}>
                   {displayName}
                 </Text>
                 {isSelf ? (
@@ -360,13 +454,23 @@ export default function FeedScreen() {
                     <Ionicons name="ellipsis-horizontal" size={22} color={t.textTertiary} />
                   </Pressable>
                 ) : (
-                  <Pressable
-                    onPress={() => void toggleFollow(post.creator_id)}
-                    style={[styles.followMini, { borderColor: isFollowing ? t.borderStrong : t.text }]}>
-                    <Text style={[styles.followMiniText, { color: t.text }]}>
-                      {isFollowing ? 'Following' : 'Follow'}
-                    </Text>
-                  </Pressable>
+                  <View style={styles.nameRowActions}>
+                    <Pressable
+                      onPress={() => void toggleFollow(post.creator_id)}
+                      style={[styles.followMini, { borderColor: isFollowing ? t.borderStrong : t.text }]}>
+                      <Text style={[styles.followMiniText, { color: t.text }]}>
+                        {isFollowing ? 'Following' : 'Follow'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Report post"
+                      hitSlop={12}
+                      onPress={() => setReportTarget({ type: 'post', id: post.id })}
+                      style={styles.postMenuBtn}>
+                      <Ionicons name="ellipsis-horizontal" size={22} color={t.textTertiary} />
+                    </Pressable>
+                  </View>
                 )}
               </View>
               <Text style={[styles.handleTime, { color: t.textTertiary }]} numberOfLines={1}>
@@ -385,11 +489,17 @@ export default function FeedScreen() {
           {post.media_url && post.media_type && post.media_type !== 'none' ? (
             canViewMedia(post) ? (
               post.media_type === 'image' ? (
-                <Image source={{ uri: post.media_url }} style={styles.media} resizeMode="cover" />
+                mediaUri ? (
+                  <Image source={{ uri: mediaUri }} style={styles.media} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.media, styles.videoFallback, { backgroundColor: t.backgroundSecondary }]}>
+                    <ActivityIndicator color={t.textTertiary} />
+                  </View>
+                )
               ) : (
                 <Pressable
                   onPress={() => {
-                    if (post.media_url) void Linking.openURL(post.media_url);
+                    if (mediaUri) void Linking.openURL(mediaUri);
                   }}
                   style={styles.videoWrap}>
                   {post.thumbnail_url ? (
@@ -485,11 +595,13 @@ export default function FeedScreen() {
     },
     [
       canViewMedia,
+      displayMediaUrl,
       engagement,
       followingSet,
       manageOwnPost,
       openComments,
       profiles,
+      router,
       sharePost,
       t,
       toggleFollow,
@@ -530,6 +642,17 @@ export default function FeedScreen() {
         ListHeaderComponent={listHeader}
         contentContainerStyle={[styles.listContent, empty && styles.listEmpty]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={t.text} />}
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+        }}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.footerLoading}>
+              <ActivityIndicator color={t.textTertiary} />
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           empty ? (
             <View style={styles.empty}>
@@ -542,6 +665,12 @@ export default function FeedScreen() {
           ) : null
         }
       />
+      <ReportSheet
+        visible={reportTarget !== null}
+        targetType={reportTarget?.type ?? 'post'}
+        targetId={reportTarget?.id ?? null}
+        onClose={() => setReportTarget(null)}
+      />
     </SafeView>
   );
 }
@@ -551,6 +680,20 @@ function createStyles(t: AppTheme) {
     listContent: { paddingBottom: spacing.xxl + 24, flexGrow: 1 },
     listEmpty: { flexGrow: 1 },
     headerIcons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    footerLoading: { paddingVertical: spacing.lg },
+    badge: {
+      position: 'absolute',
+      top: -5,
+      right: -6,
+      minWidth: 16,
+      height: 16,
+      borderRadius: 8,
+      borderWidth: 1.5,
+      paddingHorizontal: 3,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
     composer: {
       marginHorizontal: spacing.lg,
       marginBottom: spacing.md,
@@ -599,6 +742,7 @@ function createStyles(t: AppTheme) {
     },
     followMiniText: { fontSize: 12, fontWeight: '700' },
     postMenuBtn: { padding: 4, marginLeft: spacing.xs },
+    nameRowActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     handleTime: { fontSize: 13, marginTop: 2 },
     postTitle: { fontSize: 17, fontWeight: '600', letterSpacing: -0.2, marginTop: spacing.xs },
     postBody: { fontSize: 15, lineHeight: 22 },

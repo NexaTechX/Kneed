@@ -1,9 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState, useCallback } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { BookingSheet } from '@/components/BookingSheet';
 import { SafeView } from '@/components/layout/SafeView';
+import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -12,31 +15,36 @@ import type { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { useDeviceLocation } from '@/hooks/useDeviceLocation';
-import { openPaystackCheckoutForPrivateRoom } from '@/lib/paystack';
+import { fetchDiscoverableCreators, type DiscoverCreator } from '@/lib/privateRoom';
 import { supabase } from '@/lib/supabase';
 import { toNaira } from '@/lib/social';
 
 export default function PrivateRoomScreen() {
   const { user, profile } = useAuth();
+  const router = useRouter();
   const t = useAppTheme();
   const styles = useMemo(() => createStyles(t), [t]);
   const { refresh: refreshLoc } = useDeviceLocation();
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [rateNgn, setRateNgn] = useState('');
+  const [booking, setBooking] = useState<DiscoverCreator | null>(null);
+
+  const kycOk = profile?.is_kyc_verified === true;
 
   const refresh = useCallback(async () => {
     const c = await refreshLoc();
     if (c) setCoords({ lat: c.lat, lng: c.lng });
   }, [refreshLoc]);
 
-  const [bookedUserId, setBookedUserId] = useState('');
-  const [amountNgn, setAmountNgn] = useState('');
-  const [rateNgn, setRateNgn] = useState('');
-
-  const kycOk = profile?.is_kyc_verified === true;
+  const { data: creators } = useQuery({
+    queryKey: ['private-room-discover', user?.id],
+    enabled: Boolean(user),
+    queryFn: () => fetchDiscoverableCreators(user!.id),
+  });
 
   const { data: sessions, refetch } = useQuery({
     queryKey: ['private-room-sessions', user?.id],
-    enabled: Boolean(user) && kycOk,
+    enabled: Boolean(user),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('private_room_sessions')
@@ -78,110 +86,106 @@ export default function PrivateRoomScreen() {
     else Alert.alert('Saved', 'Your listing rate is set.');
   };
 
-  const createBooking = async () => {
-    if (!user || !kycOk) {
-      Alert.alert('KYC required', 'Complete KYC to use Private Room.');
-      return;
-    }
-    const cents = Math.round((parseFloat(amountNgn) || 0) * 100);
-    if (!bookedUserId.trim() || cents <= 0) {
-      Alert.alert('Details', 'Enter the user ID to book and amount (NGN).');
-      return;
-    }
-    const startAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabase
-      .from('private_room_sessions')
-      .insert({
-        booked_user_id: bookedUserId.trim(),
-        booker_user_id: user.id,
-        starts_at: startAt,
-        duration_min: 60,
-        amount_cents: cents,
-        notes: 'Private room booking',
-        status: 'pending',
-      })
-      .select('id')
-      .single();
-    if (error) {
-      Alert.alert('Could not create', error.message);
-      return;
-    }
-    setBookedUserId('');
-    setAmountNgn('');
-    const pay = await openPaystackCheckoutForPrivateRoom(data.id);
-    if (!pay.ok) Alert.alert('Payment', pay.message);
-    await refetch();
-  };
-
-  if (!kycOk) {
-    return (
-      <SafeView style={{ backgroundColor: t.background }}>
-        <AppHeader title="Private Room" subtitle="Bookings" />
-        <ScrollView contentContainerStyle={styles.content}>
-          <Card style={styles.lockedCard}>
-            <View style={[styles.iconCircle, { backgroundColor: t.surfaceMuted }]}>
-              <Ionicons name="lock-closed" size={28} color={t.text} />
-            </View>
-            <Text style={[styles.lockedTitle, { color: t.text }]}>Verification required</Text>
-            <Text style={[styles.body, { color: t.textSecondary }]}>
-              Private Room is available after identity verification (KYC). Complete verification from your account settings when ready.
-            </Text>
-          </Card>
-        </ScrollView>
-      </SafeView>
-    );
-  }
-
   return (
     <SafeView style={{ backgroundColor: t.background }}>
-      <AppHeader title="Private Room" subtitle="Sessions" />
+      <AppHeader title="Private Room" subtitle="Discover & book" />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Your listing</Text>
-        <Card style={styles.card}>
-          <View style={styles.cardHead}>
-            <Ionicons name="pricetag-outline" size={20} color={t.text} />
-            <Text style={[styles.cardTitle, { color: t.text }]}>Set your rate</Text>
-          </View>
-          <Text style={[styles.meta, { color: t.textSecondary }]}>What others pay to book you (platform fee applies).</Text>
-          <Input placeholder="Your rate (NGN)" value={rateNgn} onChangeText={setRateNgn} keyboardType="decimal-pad" />
-          <Button title="Save rate" variant="outline" onPress={() => void saveListingRate()} />
-        </Card>
-
-        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Location</Text>
-        <Card style={styles.card}>
-          <View style={styles.cardHead}>
-            <Ionicons name="location-outline" size={20} color={t.text} />
-            <Text style={[styles.cardTitle, { color: t.text }]}>Matching</Text>
-          </View>
-          <Button title="Refresh GPS" variant="outline" onPress={() => void refresh()} />
-          <Text style={[styles.meta, { color: t.textSecondary }]}>
-            {coords ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` : 'Waiting for GPS…'}
-          </Text>
-          <Button title="Save to profile" onPress={() => void saveLocation()} />
-        </Card>
-
-        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Book</Text>
-        <Card style={styles.card}>
-          <View style={styles.cardHead}>
-            <Ionicons name="calendar-outline" size={20} color={t.text} />
-            <Text style={[styles.cardTitle, { color: t.text }]}>New booking</Text>
-          </View>
-          <Input placeholder="Their user ID (UUID)" value={bookedUserId} onChangeText={setBookedUserId} autoCapitalize="none" />
-          <Input placeholder="Amount (NGN)" value={amountNgn} onChangeText={setAmountNgn} keyboardType="decimal-pad" />
-          <Button title="Create & pay" onPress={() => void createBooking()} />
-        </Card>
-
-        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Sessions</Text>
-        {(sessions ?? []).map((s: { id: string; status: string; amount_cents: number; booked_user_id: string; booker_user_id: string }) => (
-          <Card key={s.id} style={styles.sessionCard}>
-            <View style={styles.sessionTop}>
-              <Text style={[styles.sessionStatus, { color: t.text }]}>{s.status}</Text>
-              <Text style={[styles.sessionAmount, { color: t.accent }]}>{toNaira(s.amount_cents)}</Text>
-            </View>
-            <Text style={[styles.small, { color: t.textTertiary }]}>Booked user · {s.booked_user_id.slice(0, 8)}…</Text>
+        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Discover creators</Text>
+        {(creators ?? []).length === 0 ? (
+          <Card style={styles.card}>
+            <Text style={[styles.meta, { color: t.textSecondary }]}>No bookable creators yet. Check back soon.</Text>
           </Card>
-        ))}
+        ) : (
+          (creators ?? []).map((c) => (
+            <Pressable key={c.id} onPress={() => router.push(`/(client)/creator/${c.id}` as never)}>
+              <Card style={styles.creatorCard}>
+                <Avatar name={c.full_name?.trim() || 'Creator'} uri={c.avatar_url} size={48} />
+                <View style={styles.creatorInfo}>
+                  <Text style={[styles.creatorName, { color: t.text }]} numberOfLines={1}>
+                    {c.full_name?.trim() || 'Creator'}
+                  </Text>
+                  {c.headline ? (
+                    <Text style={[styles.creatorHeadline, { color: t.textTertiary }]} numberOfLines={1}>
+                      {c.headline}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.creatorRate, { color: t.accent }]}>{toNaira(c.private_room_rate_cents)} / session</Text>
+                </View>
+                <Button title="Book" onPress={() => setBooking(c)} style={styles.bookBtn} textStyle={{ fontSize: 13 }} />
+              </Card>
+            </Pressable>
+          ))
+        )}
+
+        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Your listing</Text>
+        {kycOk ? (
+          <>
+            <Card style={styles.card}>
+              <View style={styles.cardHead}>
+                <Ionicons name="pricetag-outline" size={20} color={t.text} />
+                <Text style={[styles.cardTitle, { color: t.text }]}>Set your rate</Text>
+              </View>
+              <Text style={[styles.meta, { color: t.textSecondary }]}>What others pay to book you (platform fee applies).</Text>
+              <Input placeholder="Your rate (NGN)" value={rateNgn} onChangeText={setRateNgn} keyboardType="decimal-pad" />
+              <Button title="Save rate" variant="outline" onPress={() => void saveListingRate()} />
+            </Card>
+
+            <Card style={styles.card}>
+              <View style={styles.cardHead}>
+                <Ionicons name="location-outline" size={20} color={t.text} />
+                <Text style={[styles.cardTitle, { color: t.text }]}>Matching location</Text>
+              </View>
+              <Button title="Refresh GPS" variant="outline" onPress={() => void refresh()} />
+              <Text style={[styles.meta, { color: t.textSecondary }]}>
+                {coords ? `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}` : 'Waiting for GPS…'}
+              </Text>
+              <Button title="Save to profile" onPress={() => void saveLocation()} />
+            </Card>
+          </>
+        ) : (
+          <Card style={styles.card}>
+            <View style={styles.cardHead}>
+              <Ionicons name="shield-outline" size={20} color={t.text} />
+              <Text style={[styles.cardTitle, { color: t.text }]}>Become bookable</Text>
+            </View>
+            <Text style={[styles.meta, { color: t.textSecondary }]}>
+              Verify your identity (KYC) to set a rate and let others book you.
+            </Text>
+            <Button title="Start verification" onPress={() => router.push('/(client)/kyc' as never)} />
+          </Card>
+        )}
+
+        <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Your sessions</Text>
+        {(sessions ?? []).length === 0 ? (
+          <Card style={styles.card}>
+            <Text style={[styles.meta, { color: t.textSecondary }]}>No bookings yet.</Text>
+          </Card>
+        ) : (
+          (sessions ?? []).map(
+            (s: { id: string; status: string; amount_cents: number; booked_user_id: string; booker_user_id: string }) => {
+              const isBooker = s.booker_user_id === user?.id;
+              return (
+                <Card key={s.id} style={styles.sessionCard}>
+                  <View style={styles.sessionTop}>
+                    <Text style={[styles.sessionStatus, { color: t.text }]}>{s.status}</Text>
+                    <Text style={[styles.sessionAmount, { color: t.accent }]}>{toNaira(s.amount_cents)}</Text>
+                  </View>
+                  <Text style={[styles.small, { color: t.textTertiary }]}>
+                    {isBooker ? 'You booked' : 'Booked you'} · {(isBooker ? s.booked_user_id : s.booker_user_id).slice(0, 8)}…
+                  </Text>
+                </Card>
+              );
+            },
+          )
+        )}
       </ScrollView>
+
+      <BookingSheet
+        visible={booking !== null}
+        creator={booking}
+        onClose={() => setBooking(null)}
+        onBooked={() => void refetch()}
+      />
     </SafeView>
   );
 }
@@ -200,20 +204,12 @@ function createStyles(t: AppTheme) {
     cardHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     cardTitle: { fontSize: 17, fontWeight: '600', letterSpacing: -0.2 },
     meta: { fontSize: 12, lineHeight: 18 },
-    lockedCard: {
-      alignItems: 'center',
-      gap: spacing.md,
-      paddingVertical: spacing.xl,
-    },
-    iconCircle: {
-      width: 56,
-      height: 56,
-      borderRadius: 18,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    lockedTitle: { fontSize: 20, fontWeight: '700' },
-    body: { textAlign: 'center', lineHeight: 22, paddingHorizontal: spacing.sm },
+    creatorCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    creatorInfo: { flex: 1, minWidth: 0 },
+    creatorName: { fontSize: 16, fontWeight: '700' },
+    creatorHeadline: { fontSize: 13, marginTop: 1 },
+    creatorRate: { fontSize: 13, fontWeight: '600', marginTop: 2 },
+    bookBtn: { paddingHorizontal: spacing.lg, minHeight: 40 },
     sessionCard: { paddingVertical: spacing.md },
     sessionTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     sessionStatus: { fontSize: 15, fontWeight: '600', textTransform: 'capitalize' },

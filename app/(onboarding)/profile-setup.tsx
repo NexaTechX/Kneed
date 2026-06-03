@@ -36,7 +36,8 @@ export default function ProfileSetupScreen() {
       });
       const fresh = await fetchProfile(user.id);
       if (fresh) useAuthStore.getState().setProfile(fresh);
-      router.replace('/(client)/(tabs)/feed');
+      // Let the central entry gate decide the next step (e.g. age confirmation).
+      router.replace('/');
     } catch (e: unknown) {
       Alert.alert('Error', e instanceof Error ? e.message : 'Could not save');
     } finally {

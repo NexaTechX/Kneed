@@ -12,7 +12,8 @@ import { spacing } from '@/constants/spacing';
 import type { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth } from '@/hooks/useAuth';
-import { pickAndUploadPostMedia } from '@/lib/uploadPostMedia';
+import { pickAndUploadPostMedia, type UploadedPostMedia } from '@/lib/uploadPostMedia';
+import { isPublicUrl, resolvePostMediaUrl } from '@/lib/media';
 import { supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseErrors';
 import { toNaira } from '@/lib/social';
@@ -30,10 +31,23 @@ export default function EditPostScreen() {
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [media, setMedia] = useState<{ media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null } | null>(null);
+  const [media, setMedia] = useState<UploadedPostMedia | null>(null);
   const [uploading, setUploading] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
+
+  // See create-post: protected (paid/private) media is stored in a different bucket,
+  // chosen at upload. Clear attached media if the free/protected class changes.
+  const changeProtectionToggle = (next: { paid?: boolean; priv?: boolean }) => {
+    const nextPaid = next.paid ?? isPaid;
+    const nextPriv = next.priv ?? isPrivate;
+    if (media && (isPaid || isPrivate) !== (nextPaid || nextPriv)) {
+      setMedia(null);
+      Alert.alert('Re-attach media', 'Please add your photo or video again after changing visibility.');
+    }
+    if (next.paid !== undefined) setIsPaid(next.paid);
+    if (next.priv !== undefined) setIsPrivate(next.priv);
+  };
   const [price, setPrice] = useState('0');
   const [saving, setSaving] = useState(false);
 
@@ -61,20 +75,33 @@ export default function EditPostScreen() {
 
   useEffect(() => {
     if (!loaded) return;
+    let cancelled = false;
     setTitle(loaded.title ?? '');
     setBody(loaded.body ?? '');
-    if (loaded.media_url && loaded.media_type && loaded.media_type !== 'none') {
-      setMedia({
-        media_url: loaded.media_url,
-        media_type: loaded.media_type as 'image' | 'video',
-        thumbnail_url: loaded.thumbnail_url,
-      });
-    } else {
-      setMedia(null);
-    }
     setIsPaid(loaded.is_paid);
     setIsPrivate(loaded.visibility === 'private');
     setPrice(loaded.is_paid && loaded.price_cents ? String(loaded.price_cents / 100) : '0');
+    (async () => {
+      if (loaded.media_url && loaded.media_type && loaded.media_type !== 'none') {
+        const priv = !isPublicUrl(loaded.media_url);
+        // Owner can sign their own private object for an in-editor preview.
+        const preview = priv ? await resolvePostMediaUrl(loaded.media_url) : loaded.media_url;
+        if (!cancelled) {
+          setMedia({
+            media_url: loaded.media_url,
+            media_type: loaded.media_type as 'image' | 'video',
+            thumbnail_url: loaded.thumbnail_url,
+            preview_uri: preview ?? loaded.thumbnail_url ?? '',
+            is_private: priv,
+          });
+        }
+      } else if (!cancelled) {
+        setMedia(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [loaded]);
 
   const lockedMonetization =
@@ -86,7 +113,7 @@ export default function EditPostScreen() {
     if (!user) return;
     setUploading(true);
     try {
-      const result = await pickAndUploadPostMedia(user.id);
+      const result = await pickAndUploadPostMedia(user.id, { private: isPaid || isPrivate });
       if (result) setMedia(result);
     } catch (e: unknown) {
       Alert.alert('Upload failed', e instanceof Error ? e.message : 'Could not upload media');
@@ -240,10 +267,10 @@ export default function EditPostScreen() {
             {media ? <Button title="Remove" variant="ghost" onPress={() => setMedia(null)} /> : null}
           </View>
           {media?.media_type === 'image' ? (
-            <Image source={{ uri: media.media_url }} style={styles.preview} resizeMode="cover" />
+            <Image source={{ uri: media.preview_uri }} style={styles.preview} resizeMode="cover" />
           ) : null}
           {media?.media_type === 'video' ? (
-            <Pressable onPress={() => void Linking.openURL(media.media_url)} style={styles.videoPreviewWrap}>
+            <Pressable onPress={() => media.preview_uri && void Linking.openURL(media.preview_uri)} style={styles.videoPreviewWrap}>
               {media.thumbnail_url ? (
                 <Image source={{ uri: media.thumbnail_url }} style={styles.preview} resizeMode="cover" />
               ) : (
@@ -265,7 +292,7 @@ export default function EditPostScreen() {
             </View>
             <Switch
               value={isPaid}
-              onValueChange={setIsPaid}
+              onValueChange={(v) => changeProtectionToggle({ paid: v })}
               disabled={lockedMonetization}
               trackColor={{ false: t.border, true: t.primaryMuted }}
               thumbColor={t.surfaceElevated}
@@ -276,7 +303,7 @@ export default function EditPostScreen() {
               <Text style={[styles.rowTitle, { color: t.text }]}>Private visibility</Text>
               <Text style={[styles.rowSub, { color: t.textTertiary }]}>Limit who can discover this</Text>
             </View>
-            <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: t.border, true: t.primaryMuted }} thumbColor={t.surfaceElevated} />
+            <Switch value={isPrivate} onValueChange={(v) => changeProtectionToggle({ priv: v })} trackColor={{ false: t.border, true: t.primaryMuted }} thumbColor={t.surfaceElevated} />
           </View>
           {isPaid && !lockedMonetization ? (
             <Input placeholder="Price (NGN)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />

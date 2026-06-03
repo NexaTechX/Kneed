@@ -1,19 +1,22 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { ReportSheet, type ReportTargetType } from '@/components/ReportSheet';
 import { SafeView } from '@/components/layout/SafeView';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -44,6 +47,7 @@ export default function PostCommentsScreen() {
   const styles = useMemo(() => createStyles(t), [t]);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ type: ReportTargetType; id: string } | null>(null);
 
   const {
     data: rows = [],
@@ -76,6 +80,38 @@ export default function PostCommentsScreen() {
       })) as CommentRow[];
     },
   });
+
+  const { data: followingIds = [] } = useQuery({
+    queryKey: ['social-following', user?.id],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      const { data, error } = await supabase.from('social_follows').select('followed_id').eq('follower_id', user!.id);
+      if (error) throw error;
+      return (data ?? []).map((r) => r.followed_id as string);
+    },
+  });
+
+  const followingSet = useMemo(() => new Set(followingIds), [followingIds]);
+
+  const toggleFollow = useCallback(
+    async (followedId: string) => {
+      if (!user || followedId === user.id) return;
+      try {
+        const isFollowing = followingSet.has(followedId);
+        if (isFollowing) {
+          const { error } = await supabase.from('social_follows').delete().eq('follower_id', user.id).eq('followed_id', followedId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('social_follows').insert({ follower_id: user.id, followed_id: followedId });
+          if (error) throw error;
+        }
+        await qc.invalidateQueries({ queryKey: ['social-following', user.id] });
+      } catch (e: unknown) {
+        Alert.alert('Could not update follow', formatSupabaseError(e));
+      }
+    },
+    [followingSet, qc, user],
+  );
 
   const submit = async () => {
     if (!user || !postId) return;
@@ -130,13 +166,35 @@ export default function PostCommentsScreen() {
             }
             renderItem={({ item }) => {
               const name = item.profile?.full_name?.trim() || 'Member';
+              const isSelf = user?.id === item.user_id;
+              const isFollowing = followingSet.has(item.user_id);
               return (
                 <View style={[styles.commentRow, { borderBottomColor: t.border }]}>
                   <Avatar name={name} uri={item.profile?.avatar_url} size={36} />
                   <View style={styles.commentBody}>
-                    <Text style={[styles.commentName, { color: t.text }]} numberOfLines={1}>
-                      {name}
-                    </Text>
+                    <View style={styles.commentTop}>
+                      <Text style={[styles.commentName, { color: t.text }]} numberOfLines={1}>
+                        {name}
+                      </Text>
+                      {!isSelf ? (
+                        <View style={styles.commentActions}>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={isFollowing ? `Unfollow ${name}` : `Follow ${name}`}
+                            onPress={() => void toggleFollow(item.user_id)}
+                            style={[styles.followMini, { borderColor: isFollowing ? t.borderStrong : t.text }]}>
+                            <Text style={[styles.followMiniText, { color: t.text }]}>{isFollowing ? 'Following' : 'Follow'}</Text>
+                          </Pressable>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Report comment"
+                            hitSlop={10}
+                            onPress={() => setReportTarget({ type: 'comment', id: item.id })}>
+                            <Ionicons name="flag-outline" size={16} color={t.textTertiary} />
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={[styles.commentTime, { color: t.textTertiary }]}>
                       {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
                     </Text>
@@ -166,6 +224,12 @@ export default function PostCommentsScreen() {
           <Button title="Send" loading={sending} onPress={() => void submit()} disabled={!body.trim()} />
         </View>
       </KeyboardAvoidingView>
+      <ReportSheet
+        visible={reportTarget !== null}
+        targetType={reportTarget?.type ?? 'comment'}
+        targetId={reportTarget?.id ?? null}
+        onClose={() => setReportTarget(null)}
+      />
     </SafeView>
   );
 }
@@ -185,7 +249,16 @@ function createStyles(t: AppTheme) {
       borderBottomWidth: StyleSheet.hairlineWidth,
     },
     commentBody: { flex: 1, minWidth: 0 },
+    commentTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+    commentActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     commentName: { fontSize: 14, fontWeight: '700' },
+    followMini: {
+      borderWidth: 1,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    followMiniText: { fontSize: 12, fontWeight: '700' },
     commentTime: { fontSize: 12, marginTop: 2 },
     commentText: { fontSize: 15, lineHeight: 22, marginTop: spacing.xs },
     composer: {

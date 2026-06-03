@@ -95,6 +95,57 @@ export interface WithdrawalRequest {
   created_at: string;
 }
 
+export type ModerationReportStatus = 'open' | 'reviewing' | 'resolved' | 'dismissed';
+
+export interface ModerationReport {
+  id: string;
+  reporter_id: string;
+  target_type: 'post' | 'profile' | 'session' | 'message';
+  target_id: string;
+  reason: string;
+  details: string | null;
+  status: ModerationReportStatus;
+  created_at: string;
+}
+
+export interface KycApplication {
+  id: string;
+  user_id: string;
+  status: 'pending' | 'approved' | 'rejected';
+  full_legal_name: string;
+  dob: string;
+  id_doc_path: string;
+  selfie_path: string | null;
+  admin_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export type NotificationType =
+  | 'like'
+  | 'comment'
+  | 'follow'
+  | 'purchase'
+  | 'booking'
+  | 'kyc'
+  | 'moderation'
+  | 'system';
+
+export interface AppNotification {
+  id: string;
+  recipient_id: string;
+  type: NotificationType;
+  actor_id: string | null;
+  post_id: string | null;
+  session_id: string | null;
+  title: string;
+  body: string | null;
+  data: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+}
+
 export interface ContentPurchase {
   id: string;
   post_id: string;
@@ -149,6 +200,21 @@ export interface Database {
         Row: ContentPurchase;
         Insert: Partial<ContentPurchase> & { id?: string };
         Update: Partial<ContentPurchase>;
+      };
+      notifications: {
+        Row: AppNotification;
+        Insert: Partial<AppNotification> & { recipient_id: string; type: NotificationType; title: string };
+        Update: Partial<AppNotification>;
+      };
+      kyc_applications: {
+        Row: KycApplication;
+        Insert: Partial<KycApplication> & {
+          user_id: string;
+          full_legal_name: string;
+          dob: string;
+          id_doc_path: string;
+        };
+        Update: Partial<KycApplication>;
       };
     };
   };

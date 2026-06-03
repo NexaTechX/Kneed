@@ -167,6 +167,15 @@ Deno.serve(async (req) => {
 
     await creditWallet(admin, post.creator_id, 'creator', net, 'purchase', reference);
 
+    await admin.from('notifications').insert({
+      recipient_id: post.creator_id,
+      type: 'purchase',
+      actor_id: buyerId,
+      post_id: postId,
+      title: 'New purchase',
+      body: 'Someone unlocked your paid post.',
+    });
+
     const { data: tokens } = await admin.from('push_tokens').select('token').eq('user_id', post.creator_id);
     await sendExpoPush(
       (tokens ?? []).map((row) => ({
@@ -212,6 +221,14 @@ Deno.serve(async (req) => {
     }
 
     await creditWallet(admin, session.booked_user_id, 'user', net, 'private_room', reference);
+
+    await admin.from('notifications').insert({
+      recipient_id: session.booked_user_id,
+      type: 'booking',
+      session_id: sessionId,
+      title: 'Private room booking paid',
+      body: 'A booking for your listing was paid.',
+    });
 
     const { data: tokens } = await admin.from('push_tokens').select('token').eq('user_id', session.booked_user_id);
     await sendExpoPush(

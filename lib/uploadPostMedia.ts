@@ -3,10 +3,19 @@ import { File } from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 
 export type UploadedPostMedia = {
+  /** Public URL for free content, or a private object path for paid/private content. */
   media_url: string;
   media_type: 'image' | 'video';
+  /** Always a public URL (teaser) or null — safe to show to locked viewers. */
   thumbnail_url: string | null;
+  /** Local file URI for immediate in-composer preview (not persisted). */
+  preview_uri: string;
+  /** True when media_url is a private object path rather than a public URL. */
+  is_private: boolean;
 };
+
+const PUBLIC_BUCKET = 'creator-media-public';
+const PRIVATE_BUCKET = 'creator-media-private';
 
 function extFromMime(asset: ImagePicker.ImagePickerAsset): { ext: string; contentType: string } {
   const m = (asset.mimeType ?? '').toLowerCase();
@@ -18,10 +27,20 @@ function extFromMime(asset: ImagePicker.ImagePickerAsset): { ext: string; conten
 }
 
 /**
- * Opens the library to pick an image or video, uploads to `creator-media-public`,
- * and returns public URLs for the post row.
+ * Opens the library to pick an image or video and uploads it.
+ *
+ * Paid/private posts ({ private: true }) go to the private bucket and the returned
+ * `media_url` is an object PATH (resolved to a signed URL only for allowed viewers).
+ * Free public posts go to the public bucket and `media_url` is a public URL.
+ *
+ * Video thumbnails are always uploaded to the PUBLIC bucket so a teaser poster can be
+ * shown to locked viewers without exposing the protected media itself.
  */
-export async function pickAndUploadPostMedia(userId: string): Promise<UploadedPostMedia | null> {
+export async function pickAndUploadPostMedia(
+  userId: string,
+  opts?: { private?: boolean },
+): Promise<UploadedPostMedia | null> {
+  const isPrivate = opts?.private === true;
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) {
     throw new Error('Allow photo library access to attach media.');
@@ -40,35 +59,35 @@ export async function pickAndUploadPostMedia(userId: string): Promise<UploadedPo
   const { ext, contentType } = extFromMime(asset);
   const base = `${userId}/posts/${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const mainPath = `${base}.${ext}`;
+  const mainBucket = isPrivate ? PRIVATE_BUCKET : PUBLIC_BUCKET;
 
   const picked = new File(asset.uri);
   const buffer = await picked.arrayBuffer();
 
-  const { error: upErr } = await supabase.storage.from('creator-media-public').upload(mainPath, buffer, {
+  const { error: upErr } = await supabase.storage.from(mainBucket).upload(mainPath, buffer, {
     contentType: asset.mimeType ?? contentType,
     upsert: false,
   });
   if (upErr) throw upErr;
 
-  const { data: pub } = supabase.storage.from('creator-media-public').getPublicUrl(mainPath);
-  const mediaUrl = pub.publicUrl;
+  // Private media is referenced by path; public media by its public URL.
+  const mediaUrl = isPrivate ? mainPath : supabase.storage.from(PUBLIC_BUCKET).getPublicUrl(mainPath).data.publicUrl;
 
   let thumbnailUrl: string | null = null;
   if (isVideo && asset.uri) {
-    // Some platforms expose a generated thumbnail URI — upload so feed can show a poster image.
+    // Teaser poster — always public so locked viewers can see it.
     const thumbLocal = (asset as ImagePicker.ImagePickerAsset & { thumbnailUri?: string }).thumbnailUri;
     if (thumbLocal) {
       try {
         const thumbPath = `${base}-thumb.jpg`;
         const thumbFile = new File(thumbLocal);
         const thumbBuf = await thumbFile.arrayBuffer();
-        const { error: tErr } = await supabase.storage.from('creator-media-public').upload(thumbPath, thumbBuf, {
+        const { error: tErr } = await supabase.storage.from(PUBLIC_BUCKET).upload(thumbPath, thumbBuf, {
           contentType: 'image/jpeg',
           upsert: false,
         });
         if (!tErr) {
-          const { data: tPub } = supabase.storage.from('creator-media-public').getPublicUrl(thumbPath);
-          thumbnailUrl = tPub.publicUrl;
+          thumbnailUrl = supabase.storage.from(PUBLIC_BUCKET).getPublicUrl(thumbPath).data.publicUrl;
         }
       } catch {
         // optional thumbnail
@@ -80,5 +99,7 @@ export async function pickAndUploadPostMedia(userId: string): Promise<UploadedPo
     media_url: mediaUrl,
     media_type: isVideo ? 'video' : 'image',
     thumbnail_url: thumbnailUrl,
+    preview_uri: asset.uri,
+    is_private: isPrivate,
   };
 }

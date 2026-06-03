@@ -22,6 +22,10 @@ export function useEntryRedirect(): { href: string | null; isLoading: boolean } 
     return { href: '/(onboarding)/profile-setup', isLoading: false };
   }
 
+  if (!profile?.is_age_verified || !profile?.accepted_content_policy_at) {
+    return { href: '/(onboarding)/age-gate', isLoading: false };
+  }
+
   if (adminLoading) return { href: null, isLoading: true };
   if (isAdmin) {
     return { href: '/admin-web', isLoading: false };

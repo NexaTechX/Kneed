@@ -12,7 +12,7 @@ import { spacing } from '@/constants/spacing';
 import type { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth } from '@/hooks/useAuth';
-import { pickAndUploadPostMedia } from '@/lib/uploadPostMedia';
+import { pickAndUploadPostMedia, type UploadedPostMedia } from '@/lib/uploadPostMedia';
 import { supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseErrors';
 import { toNaira } from '@/lib/social';
@@ -26,10 +26,26 @@ export default function CreatePostScreen() {
   const styles = useMemo(() => createStyles(t), [t]);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [media, setMedia] = useState<{ media_url: string; media_type: 'image' | 'video'; thumbnail_url: string | null } | null>(null);
+  const [media, setMedia] = useState<UploadedPostMedia | null>(null);
   const [uploading, setUploading] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
+
+  // Paid/private media lives in a different (private) storage bucket than free media,
+  // and the bucket is chosen at upload time. If the protected/free class changes after
+  // media is attached, clear it so the creator re-uploads into the correct bucket.
+  const changeProtectionToggle = (next: { paid?: boolean; priv?: boolean }) => {
+    const nextPaid = next.paid ?? isPaid;
+    const nextPriv = next.priv ?? isPrivate;
+    const wasProtected = isPaid || isPrivate;
+    const willBeProtected = nextPaid || nextPriv;
+    if (media && wasProtected !== willBeProtected) {
+      setMedia(null);
+      Alert.alert('Re-attach media', 'Please add your photo or video again after changing visibility.');
+    }
+    if (next.paid !== undefined) setIsPaid(next.paid);
+    if (next.priv !== undefined) setIsPrivate(next.priv);
+  };
   const [price, setPrice] = useState('0');
   const [saving, setSaving] = useState(false);
 
@@ -53,7 +69,7 @@ export default function CreatePostScreen() {
     if (!user) return;
     setUploading(true);
     try {
-      const result = await pickAndUploadPostMedia(user.id);
+      const result = await pickAndUploadPostMedia(user.id, { private: isPaid || isPrivate });
       if (result) setMedia(result);
     } catch (e: unknown) {
       Alert.alert('Upload failed', e instanceof Error ? e.message : 'Could not upload media');
@@ -193,10 +209,10 @@ export default function CreatePostScreen() {
             {media ? <Button title="Remove" variant="ghost" onPress={() => setMedia(null)} /> : null}
           </View>
           {media?.media_type === 'image' ? (
-            <Image source={{ uri: media.media_url }} style={styles.preview} resizeMode="cover" />
+            <Image source={{ uri: media.preview_uri }} style={styles.preview} resizeMode="cover" />
           ) : null}
           {media?.media_type === 'video' ? (
-            <Pressable onPress={() => void Linking.openURL(media.media_url)} style={styles.videoPreviewWrap}>
+            <Pressable onPress={() => void Linking.openURL(media.preview_uri)} style={styles.videoPreviewWrap}>
               {media.thumbnail_url ? (
                 <Image source={{ uri: media.thumbnail_url }} style={styles.preview} resizeMode="cover" />
               ) : (
@@ -216,14 +232,14 @@ export default function CreatePostScreen() {
               <Text style={[styles.rowTitle, { color: t.text }]}>Paid post</Text>
               <Text style={[styles.rowSub, { color: t.textTertiary }]}>Submit for pricing review</Text>
             </View>
-            <Switch value={isPaid} onValueChange={setIsPaid} trackColor={{ false: t.border, true: t.primaryMuted }} thumbColor={t.surfaceElevated} />
+            <Switch value={isPaid} onValueChange={(v) => changeProtectionToggle({ paid: v })} trackColor={{ false: t.border, true: t.primaryMuted }} thumbColor={t.surfaceElevated} />
           </View>
           <View style={styles.row}>
             <View style={styles.rowText}>
               <Text style={[styles.rowTitle, { color: t.text }]}>Private visibility</Text>
               <Text style={[styles.rowSub, { color: t.textTertiary }]}>Limit who can discover this</Text>
             </View>
-            <Switch value={isPrivate} onValueChange={setIsPrivate} trackColor={{ false: t.border, true: t.primaryMuted }} thumbColor={t.surfaceElevated} />
+            <Switch value={isPrivate} onValueChange={(v) => changeProtectionToggle({ priv: v })} trackColor={{ false: t.border, true: t.primaryMuted }} thumbColor={t.surfaceElevated} />
           </View>
           {isPaid ? <Input placeholder="Price (NGN)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" /> : null}
         </Card>

@@ -5,8 +5,14 @@ export default function ClientGroupLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="create-post" />
+      <Stack.Screen name="edit-profile" />
+      <Stack.Screen name="kyc" />
       <Stack.Screen name="edit-post" />
       <Stack.Screen name="post-comments" />
+      <Stack.Screen name="notifications" />
+      <Stack.Screen name="search" />
+      <Stack.Screen name="creator/[id]" />
+      <Stack.Screen name="social-connections" />
       <Stack.Screen name="wallet" />
     </Stack>
   );

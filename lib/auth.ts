@@ -27,3 +27,13 @@ export async function updateProfile(
 export async function setRole(userId: string, role: UserRole) {
   return updateProfile(userId, { role });
 }
+
+/**
+ * Records 18+ affirmation + content-policy acceptance for the current user.
+ * The timestamp is set server-side (see the record_age_and_policy_consent migration)
+ * so consent cannot be backdated by the client.
+ */
+export async function recordAgeAndPolicyConsent() {
+  const { error } = await supabase.rpc('record_age_and_policy_consent');
+  if (error) throw error;
+}
