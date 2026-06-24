@@ -10,6 +10,11 @@ export function calculateFees(priceCents: number) {
   return { platformFee, total };
 }
 
+/** A stored media value is a public URL (free content) or a private object path (paid/private). */
+export function isPublicUrl(value: string | null | undefined): boolean {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
+
 export function formatCents(cents: number): string {
   return new Intl.NumberFormat(undefined, {
     style: 'currency',

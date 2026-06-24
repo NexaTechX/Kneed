@@ -1,11 +1,11 @@
 import { supabase } from '@/lib/supabase';
+import { isPublicUrl } from '@/lib/utils';
 
 export const PRIVATE_MEDIA_BUCKET = 'creator-media-private';
 
-/** A stored media value is a public URL (free content) or a private object path (paid/private). */
-export function isPublicUrl(value: string | null | undefined): boolean {
-  return Boolean(value && /^https?:\/\//i.test(value));
-}
+// Re-exported so existing `@/lib/media` imports keep working; the pure helper lives in utils
+// (no supabase/react-native deps) so it can be unit-tested.
+export { isPublicUrl };
 
 /**
  * Resolves the displayable URL for a post's stored media value.

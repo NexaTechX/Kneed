@@ -257,6 +257,19 @@ export default function EditPostScreen() {
           </Card>
         ) : null}
 
+        {loaded.monetization_status === 'rejected' ? (
+          <Card style={styles.notice}>
+            <View style={styles.noticeRow}>
+              <Ionicons name="alert-circle-outline" size={22} color={t.warning} />
+              <Text style={[styles.noticeText, { color: t.textSecondary }]}>
+                {loaded.review_reason
+                  ? `This paid post was not approved: ${loaded.review_reason}. Make changes and save to resubmit for review.`
+                  : 'This paid post was not approved. Make changes and save to resubmit for review.'}
+              </Text>
+            </View>
+          </Card>
+        ) : null}
+
         <Text style={[styles.sectionLabel, { color: t.textTertiary }]}>Content</Text>
         <Card style={styles.formCard}>
           <Input placeholder="Headline (optional)" value={title} onChangeText={setTitle} />

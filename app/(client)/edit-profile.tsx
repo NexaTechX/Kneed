@@ -22,6 +22,8 @@ export default function EditProfileScreen() {
   const setProfile = useAuthStore((s) => s.setProfile);
   const [fullName, setFullName] = useState(profile?.full_name ?? '');
   const [phone, setPhone] = useState(profile?.phone ?? '');
+  const [headline, setHeadline] = useState(profile?.headline ?? '');
+  const [bio, setBio] = useState(profile?.creator_bio ?? '');
   const [saving, setSaving] = useState(false);
   const kycOk = profile?.is_kyc_verified === true;
 
@@ -37,6 +39,8 @@ export default function EditProfileScreen() {
       await updateProfile(user.id, {
         full_name: name,
         phone: phone.trim() || null,
+        headline: headline.trim() || null,
+        creator_bio: bio.trim() || null,
       });
       const fresh = await fetchProfile(user.id);
       if (fresh) setProfile(fresh);
@@ -70,6 +74,19 @@ export default function EditProfileScreen() {
           <Text style={[styles.label, { color: t.textTertiary }]}>Phone</Text>
           <Input value={phone} onChangeText={setPhone} placeholder="Optional" keyboardType="phone-pad" />
 
+          <Text style={[styles.label, { color: t.textTertiary }]}>Headline</Text>
+          <Input value={headline} onChangeText={setHeadline} placeholder="A short tagline shown on your posts" maxLength={80} />
+
+          <Text style={[styles.label, { color: t.textTertiary }]}>Bio</Text>
+          <Input
+            value={bio}
+            onChangeText={setBio}
+            placeholder="Tell people about yourself"
+            multiline
+            style={styles.bioInput}
+            maxLength={500}
+          />
+
           <Button title="Save changes" loading={saving} onPress={() => void onSave()} style={{ marginTop: spacing.md }} />
         </Card>
 
@@ -100,6 +117,7 @@ function createStyles(t: AppTheme) {
     sectionTitle: { fontSize: 16, fontWeight: '700' },
     helper: { fontSize: 14, lineHeight: 20, marginBottom: spacing.sm },
     label: { fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: spacing.xs },
+    bioInput: { minHeight: 90, textAlignVertical: 'top' },
     kycHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 2 },
     statusPill: {
       borderWidth: StyleSheet.hairlineWidth,

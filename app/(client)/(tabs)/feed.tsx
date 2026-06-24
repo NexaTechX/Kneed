@@ -33,6 +33,7 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseErrors';
 import { isPublicUrl, resolvePostMediaUrl } from '@/lib/media';
 import { fetchUnreadCount } from '@/lib/notifications';
+import { queryKeys } from '@/lib/queries';
 import { toNaira } from '@/lib/social';
 
 const PAGE_SIZE = 20;
@@ -90,7 +91,7 @@ export default function FeedScreen() {
   const grantSet = useMemo(() => new Set(accessPostIds), [accessPostIds]);
 
   const { data: unreadCount = 0 } = useQuery({
-    queryKey: ['notifications-unread', user?.id],
+    queryKey: queryKeys.notificationsUnread(user?.id),
     enabled: Boolean(user),
     queryFn: () => fetchUnreadCount(user!.id),
   });
@@ -193,7 +194,7 @@ export default function FeedScreen() {
   useFocusEffect(
     useCallback(() => {
       void refetch();
-      void qc.invalidateQueries({ queryKey: ['notifications-unread', user?.id] });
+      void qc.invalidateQueries({ queryKey: queryKeys.notificationsUnread(user?.id) });
     }, [refetch, qc, user?.id]),
   );
 
@@ -337,7 +338,7 @@ export default function FeedScreen() {
   );
 
   const sharePost = useCallback(async (post: FeedPost) => {
-    const snippet = [post.title, post.body].filter(Boolean).join('\n\n') || 'Check out this post on Kneed.';
+    const snippet = [post.title, post.body].filter(Boolean).join('\n\n') || 'Check out this post on Knead.';
     const message = snippet.length > 280 ? `${snippet.slice(0, 277)}…` : snippet;
     try {
       if (Platform.OS === 'web') {
@@ -349,7 +350,7 @@ export default function FeedScreen() {
         }
         return;
       }
-      await Share.share({ message, title: 'Kneed' });
+      await Share.share({ message, title: 'Knead' });
     } catch {
       /* user dismissed share sheet */
     }

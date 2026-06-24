@@ -253,6 +253,9 @@ export default function CreatePostScreen() {
             <Text style={[styles.meta, { color: t.textTertiary }]}>
               {post.status} · {post.is_paid ? `Paid · ${post.monetization_status} · ${toNaira(post.price_cents)}` : 'Free'}
             </Text>
+            {post.monetization_status === 'rejected' && post.review_reason ? (
+              <Text style={[styles.meta, { color: t.warning }]}>Review: {post.review_reason}</Text>
+            ) : null}
             <View style={styles.historyActions}>
               <Button title="Edit" variant="outline" onPress={() => router.push({ pathname: '/(client)/edit-post', params: { id: post.id } })} />
               <Button title="Delete" variant="ghost" onPress={() => confirmDeletePost(post)} />

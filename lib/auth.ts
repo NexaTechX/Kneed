@@ -17,7 +17,21 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
 
 export async function updateProfile(
   userId: string,
-  patch: Partial<Pick<Profile, 'full_name' | 'phone' | 'avatar_url' | 'role' | 'onboarding_complete'>>,
+  patch: Partial<
+    Pick<
+      Profile,
+      | 'full_name'
+      | 'phone'
+      | 'avatar_url'
+      | 'role'
+      | 'onboarding_complete'
+      | 'headline'
+      | 'creator_bio'
+      | 'payout_bank_name'
+      | 'payout_account_number'
+      | 'payout_account_name'
+    >
+  >,
 ) {
   const { data, error } = await supabase.from('profiles').update(patch).eq('id', userId).select().single();
   if (error) throw error;

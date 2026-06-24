@@ -21,6 +21,9 @@ export interface Profile {
   private_room_lng?: number | null;
   private_room_rate_cents?: number;
   private_room_location_updated_at?: string | null;
+  payout_bank_name?: string | null;
+  payout_account_number?: string | null;
+  payout_account_name?: string | null;
   created_at: string;
 }
 
@@ -37,6 +40,7 @@ export interface CreatorPost {
   price_cents: number;
   monetization_status: 'none' | 'pending_review' | 'approved' | 'rejected';
   status: 'draft' | 'published' | 'removed' | 'flagged' | 'rejected';
+  review_reason?: string | null;
   created_at: string;
   updated_at: string;
 }

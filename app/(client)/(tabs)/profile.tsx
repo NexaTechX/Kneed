@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { File } from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,8 +14,9 @@ import type { AppTheme } from '@/constants/theme';
 import { spacing } from '@/constants/spacing';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth, signOut } from '@/hooks/useAuth';
-import { updateProfile } from '@/lib/auth';
+import { fetchProfile, updateProfile } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/stores/authStore';
 
 type SocialUser = {
   id: string;
@@ -28,10 +29,12 @@ export default function ClientProfileScreen() {
   const t = useAppTheme();
   const styles = useMemo(() => createStyles(t), [t]);
   const { profile, user } = useAuth();
+  const setProfile = useAuthStore((s) => s.setProfile);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const { data: social } = useQuery({
+  const { data: social, refetch: refetchSocial } = useQuery({
     queryKey: ['profile-social', user?.id],
     enabled: Boolean(user),
     queryFn: async () => {
@@ -122,6 +125,17 @@ export default function ClientProfileScreen() {
     await signOut();
   };
 
+  const onRefresh = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    try {
+      const [, fresh] = await Promise.all([refetchSocial(), fetchProfile(user.id)]);
+      if (fresh) setProfile(fresh);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const kycOk = profile?.is_kyc_verified === true;
   const followers = social?.followers ?? [];
   const following = social?.following ?? [];
@@ -129,7 +143,11 @@ export default function ClientProfileScreen() {
 
   return (
     <SafeView style={{ backgroundColor: t.background }}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={t.text} />}>
+
         <LinearGradient
           colors={[t.primary, '#3F3F46']}
           start={{ x: 0, y: 0 }}

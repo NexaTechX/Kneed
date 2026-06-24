@@ -16,20 +16,7 @@ import {
   pickAndUploadKycDocument,
   submitKycApplication,
 } from '@/lib/kyc';
-
-/** Returns whole years between dob (YYYY-MM-DD) and today, or null if invalid. */
-function ageFromDob(dob: string): number | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob.trim());
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const date = new Date(y, mo - 1, d);
-  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null;
-  const now = new Date();
-  let age = now.getFullYear() - y;
-  const beforeBirthday = now.getMonth() < mo - 1 || (now.getMonth() === mo - 1 && now.getDate() < d);
-  if (beforeBirthday) age -= 1;
-  return age;
-}
+import { ageFromDob } from '@/lib/validate';
 
 export default function KycScreen() {
   const t = useAppTheme();

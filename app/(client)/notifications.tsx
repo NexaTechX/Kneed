@@ -11,6 +11,7 @@ import type { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth } from '@/hooks/useAuth';
 import { fetchNotifications, markAllNotificationsRead } from '@/lib/notifications';
+import { queryKeys } from '@/lib/queries';
 import type { AppNotification, NotificationType } from '@/types/database';
 
 const ICON: Record<NotificationType, keyof typeof Ionicons.glyphMap> = {
@@ -32,7 +33,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
 
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ['notifications', user?.id],
+    queryKey: queryKeys.notifications(user?.id),
     enabled: Boolean(user),
     queryFn: () => fetchNotifications(user!.id),
   });
@@ -43,7 +44,7 @@ export default function NotificationsScreen() {
     void (async () => {
       try {
         await markAllNotificationsRead(user.id);
-        await qc.invalidateQueries({ queryKey: ['notifications-unread', user.id] });
+        await qc.invalidateQueries({ queryKey: queryKeys.notificationsUnread(user.id) });
       } catch {
         /* best effort */
       }

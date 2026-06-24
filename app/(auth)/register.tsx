@@ -18,6 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeView } from '@/components/layout/SafeView';
 import { spacing } from '@/constants/spacing';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isValidEmail, passwordIssue } from '@/lib/validate';
 import type { UserRole } from '@/types/database';
 
 /** Signup screen palette fixed to the provided light design. */
@@ -65,6 +66,15 @@ export default function RegisterScreen() {
       Alert.alert('Name required', 'Please enter your full name.');
       return;
     }
+    if (!isValidEmail(email)) {
+      Alert.alert('Check your email', 'Enter a valid email address.');
+      return;
+    }
+    const pwIssue = passwordIssue(password);
+    if (pwIssue) {
+      Alert.alert('Choose a stronger password', pwIssue);
+      return;
+    }
     if (!agreedToTerms) {
       Alert.alert('Terms', 'Please agree to the Terms of Service and Privacy Policy to continue.');
       return;
@@ -86,13 +96,18 @@ export default function RegisterScreen() {
       const uid = data.user?.id;
       if (!uid) throw new Error('No user id');
 
-      const { error: pe } = await supabase
-        .from('profiles')
-        .update({ role, full_name: fullName.trim() })
-        .eq('id', uid);
-      if (pe) throw pe;
-
-      router.replace('/');
+      // With email confirmation ON, sign-up returns no session, so a profile update would
+      // hit RLS. Only set the name now if we have a session; otherwise onboarding collects it.
+      if (data.session) {
+        const { error: pe } = await supabase
+          .from('profiles')
+          .update({ role, full_name: fullName.trim() })
+          .eq('id', uid);
+        if (pe) throw pe;
+        router.replace('/');
+      } else {
+        router.replace({ pathname: '/(auth)/verify-email', params: { email: email.trim() } });
+      }
     } catch (e: unknown) {
       Alert.alert('Sign up failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {

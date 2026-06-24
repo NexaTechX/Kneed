@@ -18,6 +18,7 @@ import { SafeView } from '@/components/layout/SafeView';
 import { spacing } from '@/constants/spacing';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { isValidEmail } from '@/lib/validate';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -36,13 +37,28 @@ export default function LoginScreen() {
       );
       return;
     }
+    if (!isValidEmail(email)) {
+      Alert.alert('Check your email', 'Enter a valid email address.');
+      return;
+    }
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) throw error;
       router.replace('/');
     } catch (e: unknown) {
-      Alert.alert('Sign in failed', e instanceof Error ? e.message : 'Unknown error');
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      if (/confirm/i.test(message)) {
+        Alert.alert('Email not confirmed', 'Please confirm your email to continue.', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Verify email',
+            onPress: () => router.push({ pathname: '/(auth)/verify-email', params: { email: email.trim() } }),
+          },
+        ]);
+      } else {
+        Alert.alert('Sign in failed', message);
+      }
     } finally {
       setLoading(false);
     }

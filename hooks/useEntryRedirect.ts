@@ -18,6 +18,11 @@ export function useEntryRedirect(): { href: string | null; isLoading: boolean } 
   if (authLoading) return { href: null, isLoading: true };
   if (!user) return { href: '/(auth)/welcome', isLoading: false };
 
+  // If the project requires email confirmation and this session is somehow unconfirmed, gate it.
+  if (!user.email_confirmed_at) {
+    return { href: '/(auth)/verify-email', isLoading: false };
+  }
+
   if (!profile?.full_name?.trim()) {
     return { href: '/(onboarding)/profile-setup', isLoading: false };
   }

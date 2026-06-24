@@ -22,7 +22,7 @@ A mobile-first **creator content platform** built with Expo (React Native) and S
 Routing is gated by [hooks/useEntryRedirect.ts](hooks/useEntryRedirect.ts): no session → `(auth)/welcome`; no profile name → onboarding; admin → `admin-web`; otherwise → the client feed.
 
 - **`(auth)`** — welcome, login, register, forgot-password, terms, privacy (legal screens are placeholders)
-- **`(onboarding)`** — role-select, profile-setup
+- **`(onboarding)`** — profile-setup, age-gate (18+ + content-policy consent)
 - **`(client)/(tabs)`** — `feed` (Home), `private-room` (Private), `profile`
 - **`(client)`** (non-tab) — `create-post`, `edit-post`, `post-comments`, `wallet`
 - **`admin-web.tsx`** — web admin console (moderation, withdrawals)
@@ -49,6 +49,24 @@ Routing is gated by [hooks/useEntryRedirect.ts](hooks/useEntryRedirect.ts): no s
 2. On success, Paystack calls the `paystack-webhook` Edge Function ([supabase/functions/paystack-webhook/index.ts](supabase/functions/paystack-webhook/index.ts)), which verifies the `x-paystack-signature` HMAC, then — using the service role — records the purchase, grants post access, credits the creator's wallet (net of fees), and sends a push notification.
 
 Clients can never set `payment_status`/access themselves; all financial state changes happen server-side via the webhook + service role. The webhook is idempotent (duplicate charges are ignored).
+
+## Operations (admin console)
+
+The web admin console (`/admin-web`, gated by a row in `public.admin_roles`) handles:
+
+- **KYC review** (`support`/`super_admin`) — view submitted ID/selfie via signed URLs, approve (flips `is_kyc_verified`) or reject with a reason.
+- **Paid-post review** (`moderator`/`super_admin`) — approve to publish, or reject with a reason (creator is notified and can edit & resubmit).
+- **Moderation** (`moderator`/`super_admin`) — triage reports; remove posts or suspend accounts (enforced in RLS).
+- **Withdrawals / payouts** (`finance`/`super_admin`) — see the SOP below.
+
+### Payouts (manual SOP)
+
+Payouts are **not automated**. The custodial wallet holds creator earnings; releasing money is a finance action:
+
+1. Creator saves bank details (Wallet → Payout method) and requests a withdrawal (min NGN 1,000, ≤ available balance).
+2. Finance **approves** the request in the admin console (idempotent — only acts on `pending`).
+3. Finance transfers the funds out-of-band (Paystack dashboard / bank transfer) to the saved account.
+4. Finance clicks **Mark paid** and enters the transfer reference. This sets `status='paid'`, records `payout_reference`, and writes an audit log (`admin_mark_withdrawal_paid`).
 
 ## Setup
 

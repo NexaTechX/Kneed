@@ -53,7 +53,7 @@ export default function WelcomeScreen() {
             <Image source={require('@/assets/images/brand-mark.png')} style={styles.brandMark} resizeMode="contain" />
           </LinearGradient>
           <View style={styles.brandWordmark}>
-            <Text style={[styles.brandName, { color: t.text }]}>Kneed</Text>
+            <Text style={[styles.brandName, { color: t.text }]}>Knead</Text>
             <Text style={[styles.brandTag, { color: t.textSecondary }]}>GROW YOUR AUDIENCE · HAVE FUN · EARN ON YOUR TERMS</Text>
           </View>
         </View>
@@ -75,7 +75,7 @@ export default function WelcomeScreen() {
           </View>
           <Text style={[styles.headline, { color: t.text }]}>Build an audience, enjoy the feed, and turn your craft into income.</Text>
           <Text style={[styles.sub, { color: t.textSecondary }]}>
-            Kneed is a creator-friendly social app: post photos and video, show up in a real feed, and let people who love your work
+            Knead is a creator-friendly social app: post photos and video, show up in a real feed, and let people who love your work
             find you again and again. Keep it light and expressive while you scale—then layer in paid posts, unlocks, or private
             bookings when the timing feels right for you.
           </Text>
@@ -120,7 +120,7 @@ export default function WelcomeScreen() {
                 { backgroundColor: t.primary, shadowColor: t.shadow },
                 pressed && styles.pressed,
               ]}>
-              <Text style={styles.primaryText}>Start growing on Kneed</Text>
+              <Text style={styles.primaryText}>Start growing on Knead</Text>
               <FontAwesome name="arrow-right" size={18} color="#FFFFFF" />
             </Pressable>
           </Link>

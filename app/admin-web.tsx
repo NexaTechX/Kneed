@@ -100,11 +100,37 @@ export default function AdminWebScreen() {
     },
   });
 
+  // Resolve display names for the UUIDs shown across the queues.
+  const referencedIds = useMemo(() => {
+    const s = new Set<string>();
+    (pendingPosts ?? []).forEach((p) => s.add(p.creator_id));
+    (withdrawals ?? []).forEach((w) => s.add(w.user_id));
+    (reports ?? []).forEach((r) => {
+      if (r.target_type === 'profile') s.add(r.target_id);
+    });
+    return [...s].sort();
+  }, [pendingPosts, withdrawals, reports]);
+
+  const { data: nameMap } = useQuery<Record<string, string>>({
+    queryKey: ['admin-names', referencedIds],
+    enabled: referencedIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.from('profiles').select('id, full_name').in('id', referencedIds);
+      if (error) throw error;
+      const m: Record<string, string> = {};
+      for (const p of data ?? []) m[p.id] = (p.full_name as string) ?? '';
+      return m;
+    },
+  });
+
+  const nameFor = (id: string) => nameMap?.[id]?.trim() || `${id.slice(0, 8)}…`;
+
   const approveWithdrawal = async (id: string) => {
     const { error } = await supabase
       .from('withdrawal_requests')
       .update({ status: 'approved', reviewed_by: user?.id ?? null, reviewed_at: new Date().toISOString() })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'pending'); // idempotent: no-op if already actioned
     if (error) {
       Alert.alert('Approval failed', error.message);
       return;
@@ -112,11 +138,22 @@ export default function AdminWebScreen() {
     await refetch();
   };
 
+  const markWithdrawalPaid = async (id: string) => {
+    const reference =
+      typeof window !== 'undefined' && typeof window.prompt === 'function'
+        ? window.prompt('Payout reference (bank/Paystack transfer id)')
+        : '';
+    if (!reference || !reference.trim()) return;
+    const { error } = await supabase.rpc('admin_mark_withdrawal_paid', { p_id: id, p_reference: reference.trim() });
+    if (error) {
+      Alert.alert('Mark paid failed', error.message);
+      return;
+    }
+    await refetch();
+  };
+
   const approveMonetizedPost = async (id: string) => {
-    const { error } = await supabase
-      .from('creator_posts')
-      .update({ monetization_status: 'approved', status: 'published' })
-      .eq('id', id);
+    const { error } = await supabase.rpc('admin_review_monetization', { p_post_id: id, p_approve: true, p_reason: null });
     if (error) {
       Alert.alert('Approve failed', error.message);
       return;
@@ -125,10 +162,16 @@ export default function AdminWebScreen() {
   };
 
   const rejectMonetizedPost = async (id: string) => {
-    const { error } = await supabase
-      .from('creator_posts')
-      .update({ monetization_status: 'rejected', status: 'rejected' })
-      .eq('id', id);
+    const reason =
+      typeof window !== 'undefined' && typeof window.prompt === 'function'
+        ? window.prompt('Reason for rejection (shown to the creator)')
+        : '';
+    if (reason === null) return; // cancelled
+    const { error } = await supabase.rpc('admin_review_monetization', {
+      p_post_id: id,
+      p_approve: false,
+      p_reason: reason?.trim() || 'Did not meet content guidelines.',
+    });
     if (error) {
       Alert.alert('Reject failed', error.message);
       return;
@@ -298,7 +341,7 @@ export default function AdminWebScreen() {
           <Card key={post.id} style={styles.itemCard}>
             <Text style={styles.itemTitle}>{post.title || 'Untitled'}</Text>
             <Text style={styles.meta}>{post.body?.slice(0, 120) ?? ''}</Text>
-            <Text style={styles.meta}>Price: {toNaira(post.price_cents)} · Author: {post.creator_id}</Text>
+            <Text style={styles.meta}>Price: {toNaira(post.price_cents)} · Author: {nameFor(post.creator_id)}</Text>
             {canModerate ? (
               <View style={styles.actions}>
                 <Button title="Approve & publish" onPress={() => void approveMonetizedPost(post.id)} />
@@ -316,12 +359,20 @@ export default function AdminWebScreen() {
         {(withdrawals ?? []).map((item) => (
           <Card key={item.id} style={styles.itemCard}>
             <Text style={styles.itemTitle}>{toNaira(item.amount_cents)}</Text>
-            <Text style={styles.meta}>User: {item.user_id}</Text>
+            <Text style={styles.meta}>User: {nameFor(item.user_id)}</Text>
             <Text style={styles.meta}>Status: {item.status}</Text>
-            {item.status === 'pending' && canApproveWithdrawals ? (
+            {item.destination ? <Text style={styles.meta}>To: {item.destination}</Text> : null}
+            {canApproveWithdrawals ? (
               <View style={styles.actions}>
-                <Button title="Approve" onPress={() => void approveWithdrawal(item.id)} />
-                <Button title="Reject" variant="outline" onPress={() => void rejectWithdrawal(item.id)} />
+                {item.status === 'pending' ? (
+                  <>
+                    <Button title="Approve" onPress={() => void approveWithdrawal(item.id)} />
+                    <Button title="Reject" variant="outline" onPress={() => void rejectWithdrawal(item.id)} />
+                  </>
+                ) : null}
+                {item.status === 'approved' ? (
+                  <Button title="Mark paid" onPress={() => void markWithdrawalPaid(item.id)} />
+                ) : null}
               </View>
             ) : null}
           </Card>
@@ -342,7 +393,9 @@ export default function AdminWebScreen() {
           <Card key={report.id} style={styles.itemCard}>
             <Text style={styles.itemTitle}>{report.target_type} report</Text>
             <Text style={styles.meta}>Status: {report.status}</Text>
-            <Text style={styles.meta}>Target: {report.target_id}</Text>
+            <Text style={styles.meta}>
+              Target: {report.target_type === 'profile' ? nameFor(report.target_id) : report.target_id}
+            </Text>
             <Text style={styles.meta}>{report.reason}</Text>
             {report.details ? <Text style={styles.meta}>{report.details}</Text> : null}
             {canModerate ? (
