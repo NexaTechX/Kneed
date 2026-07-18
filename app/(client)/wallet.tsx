@@ -109,7 +109,7 @@ export default function WalletScreen() {
         payout_account_number: accountNumber.trim(),
         payout_account_name: accountName.trim(),
       });
-      const fresh = await fetchProfile(user.id);
+      const fresh = await fetchProfile(user.id, user.email ?? '');
       if (fresh) setProfile(fresh);
       Alert.alert('Saved', 'Your payout method was updated.');
     } catch (e: unknown) {

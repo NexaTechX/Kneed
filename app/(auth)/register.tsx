@@ -1,5 +1,4 @@
 import { Link, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,32 +13,22 @@ import {
   View,
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeView } from '@/components/layout/SafeView';
 import { spacing } from '@/constants/spacing';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { useAppTheme } from '@/hooks/useAppTheme';
+import { isSupabaseConfigured, supabase, supabaseAnonKey, supabaseUrl } from '@/lib/supabase';
 import { isValidEmail, passwordIssue } from '@/lib/validate';
 import type { UserRole } from '@/types/database';
 
-/** Signup screen palette fixed to the provided light design. */
-const SIGNUP = {
-  pageBgLight: '#FAF9F6',
-  cardBg: '#FFFFFF',
-  inputBgLight: '#F5F5F5',
-  featureBeige: '#F3EDE6',
-  text: '#141414',
-  textTertiary: '#A29D95',
-  border: '#E8E3DC',
-  borderStrong: '#D7D1C8',
-  shadow: 'rgba(12, 10, 8, 0.08)',
-  accent: '#A0522D',
-  gradientStart: '#FF9E7D',
-  gradientEnd: '#FF8B6A',
-  bodyMuted: '#4A4A4A',
-} as const;
+type RegisterResponse = {
+  session?: { access_token: string; refresh_token: string };
+  user?: { id: string; email?: string };
+  error?: string;
+};
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const t = useAppTheme();
   const styles = useMemo(() => createStyles(), []);
   /** Same app for everyone — browse-only or posting is a choice in the product, not an account type. */
   const role = 'client' as UserRole;
@@ -50,16 +39,6 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const pageBg = SIGNUP.pageBgLight;
-  const inputBg = SIGNUP.inputBgLight;
-  const cardBg = SIGNUP.cardBg;
-  const accent = SIGNUP.accent;
-  const text = SIGNUP.text;
-  const muted = SIGNUP.bodyMuted;
-  const tertiary = SIGNUP.textTertiary;
-  const border = SIGNUP.border;
-  const borderStrong = SIGNUP.borderStrong;
 
   const onSubmit = async () => {
     if (!fullName.trim()) {
@@ -87,36 +66,63 @@ export default function RegisterScreen() {
       return;
     }
     setLoading(true);
+    const trimmedEmail = email.trim();
+    const trimmedName = fullName.trim();
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
+      // Admin create via edge function — never call auth.signUp (that path is email-rate-limited).
+      const res = await fetch(`${supabaseUrl}/functions/v1/register`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password,
+          full_name: trimmedName,
+        }),
       });
-      if (error) throw error;
-      const uid = data.user?.id;
-      if (!uid) throw new Error('No user id');
 
-      // With email confirmation ON, sign-up returns no session, so a profile update would
-      // hit RLS. Only set the name now if we have a session; otherwise onboarding collects it.
-      if (data.session) {
+      let data: RegisterResponse = {};
+      try {
+        data = (await res.json()) as RegisterResponse;
+      } catch {
+        throw new Error(res.ok ? 'Unexpected signup response.' : `Sign up failed (${res.status}).`);
+      }
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Sign up failed (${res.status}).`);
+      }
+      if (!data.session?.access_token || !data.session.refresh_token) {
+        throw new Error('Account created but sign-in failed. Try signing in with your new password.');
+      }
+
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      if (sessionError) throw sessionError;
+
+      const uid = data.user?.id;
+      if (uid) {
         const { error: pe } = await supabase
           .from('profiles')
-          .update({ role, full_name: fullName.trim() })
+          .update({ role, full_name: trimmedName })
           .eq('id', uid);
         if (pe) throw pe;
-        router.replace('/');
-      } else {
-        router.replace({ pathname: '/(auth)/verify-email', params: { email: email.trim() } });
       }
+
+      router.replace('/');
     } catch (e: unknown) {
-      Alert.alert('Sign up failed', e instanceof Error ? e.message : 'Unknown error');
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      Alert.alert('Sign up failed', message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeView style={{ backgroundColor: pageBg }}>
+    <SafeView style={{ backgroundColor: t.background }}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -124,169 +130,115 @@ export default function RegisterScreen() {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}>
-          <View style={styles.topBar}>
+          contentContainerStyle={styles.content}>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.backBtn, { borderColor: t.border, backgroundColor: t.surfaceElevated }]}
+            accessibilityRole="button"
+            accessibilityLabel="Go back">
+            <FontAwesome name="chevron-left" size={16} color={t.text} />
+          </Pressable>
+
+          <Text style={[styles.brand, { color: t.text }]}>Knead</Text>
+          <Text style={[styles.title, { color: t.text }]}>Create account</Text>
+          <Text style={[styles.subtitle, { color: t.textSecondary }]}>
+            Enter your details to get started.
+          </Text>
+
+          <Text style={[styles.label, { color: t.textSecondary }]}>Full name</Text>
+          <TextInput
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Your name"
+            placeholderTextColor={t.textTertiary}
+            style={[styles.input, { borderColor: t.borderStrong, backgroundColor: t.inputBackground, color: t.text }]}
+            autoCapitalize="words"
+            autoCorrect
+          />
+
+          <Text style={[styles.label, { color: t.textSecondary }]}>Email</Text>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            placeholder="you@example.com"
+            placeholderTextColor={t.textTertiary}
+            style={[styles.input, { borderColor: t.borderStrong, backgroundColor: t.inputBackground, color: t.text }]}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+          />
+
+          <Text style={[styles.label, { color: t.textSecondary }]}>Password</Text>
+          <View style={[styles.passwordWrap, { borderColor: t.borderStrong, backgroundColor: t.inputBackground }]}>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              placeholderTextColor={t.textTertiary}
+              style={[styles.passwordInput, { color: t.text }]}
+              secureTextEntry={!showPassword}
+              autoComplete="password-new"
+            />
             <Pressable
-              onPress={() => router.back()}
-              style={[styles.backBtn, { backgroundColor: cardBg, borderColor: border }]}
+              onPress={() => setShowPassword((s) => !s)}
+              hitSlop={12}
               accessibilityRole="button"
-              accessibilityLabel="Go back">
-              <FontAwesome name="chevron-left" size={18} color={text} />
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+              <FontAwesome name={showPassword ? 'eye' : 'eye-slash'} size={18} color={t.textTertiary} />
             </Pressable>
           </View>
 
-          <View style={[styles.card, { backgroundColor: cardBg, shadowColor: SIGNUP.shadow }]}>
-            <FieldLabel color={muted}>Full name</FieldLabel>
-            <TextInput
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Evelyn Thorne"
-              placeholderTextColor={tertiary}
-              style={[styles.input, { backgroundColor: inputBg, color: text }]}
-              autoCapitalize="words"
-              autoCorrect
-            />
-
-            <FieldLabel color={muted}>Email</FieldLabel>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="hello@example.com"
-              placeholderTextColor={tertiary}
-              style={[styles.input, { backgroundColor: inputBg, color: text }]}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-            />
-
-            <FieldLabel color={muted}>Password</FieldLabel>
-            <View style={[styles.passwordWrap, { backgroundColor: inputBg }]}>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={tertiary}
-                style={[styles.passwordInput, { color: text }]}
-                secureTextEntry={!showPassword}
-                autoComplete="password-new"
-              />
-              <Pressable
-                onPress={() => setShowPassword((s) => !s)}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
-                <FontAwesome name={showPassword ? 'eye' : 'eye-slash'} size={18} color={tertiary} />
-              </Pressable>
+          <Pressable
+            style={styles.termsRow}
+            onPress={() => setAgreedToTerms((a) => !a)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: agreedToTerms }}>
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: agreedToTerms ? t.accent : t.borderStrong,
+                  backgroundColor: agreedToTerms ? t.accent : 'transparent',
+                },
+              ]}>
+              {agreedToTerms ? <FontAwesome name="check" size={12} color="#FAFAFA" /> : null}
             </View>
-
-            <Pressable
-              style={styles.termsRow}
-              onPress={() => setAgreedToTerms((a) => !a)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: agreedToTerms }}>
-              <View
-                style={[
-                  styles.checkbox,
-                  { borderColor: agreedToTerms ? accent : borderStrong, backgroundColor: agreedToTerms ? accent : 'transparent' },
-                ]}>
-                {agreedToTerms ? <FontAwesome name="check" size={12} color="#FFFFFF" /> : null}
-              </View>
-              <Text style={[styles.termsText, { color: muted }]}>
-                I agree to the{' '}
-                <Text onPress={() => router.push('/(auth)/terms')} style={[styles.termsLink, { color: accent }]}>
-                  Terms of Service
-                </Text>{' '}
-                and{' '}
-                <Text onPress={() => router.push('/(auth)/privacy')} style={[styles.termsLink, { color: accent }]}>
-                  Privacy Policy
-                </Text>
+            <Text style={[styles.termsText, { color: t.textSecondary }]}>
+              I agree to the{' '}
+              <Text onPress={() => router.push('/(auth)/terms')} style={[styles.termsLink, { color: t.accent }]}>
+                Terms
               </Text>
-            </Pressable>
+              {' '}and{' '}
+              <Text onPress={() => router.push('/(auth)/privacy')} style={[styles.termsLink, { color: t.accent }]}>
+                Privacy Policy
+              </Text>
+            </Text>
+          </Pressable>
 
-            <LinearGradient
-              colors={[SIGNUP.gradientStart, SIGNUP.gradientEnd]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.ctaGradient}>
-              <Pressable
-                onPress={onSubmit}
-                disabled={loading}
-                style={({ pressed }) => [styles.ctaInner, pressed && styles.ctaPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Create account">
-                {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Text style={styles.ctaText}>Create Account</Text>
-                    <FontAwesome name="arrow-right" size={18} color="#FFFFFF" />
-                  </>
-                )}
-              </Pressable>
-            </LinearGradient>
+          <Pressable
+            onPress={onSubmit}
+            disabled={loading}
+            style={({ pressed }) => [
+              styles.cta,
+              { backgroundColor: t.primary },
+              pressed && styles.pressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Create account">
+            {loading ? (
+              <ActivityIndicator color={t.onPrimary} />
+            ) : (
+              <Text style={[styles.ctaText, { color: t.onPrimary }]}>Create account</Text>
+            )}
+          </Pressable>
 
+          <View style={styles.footerRow}>
+            <Text style={[styles.footerMuted, { color: t.textSecondary }]}>Already have an account? </Text>
             <Link href="/(auth)/login" asChild>
-              <Pressable style={styles.signInRow}>
-                <Text style={[styles.signInMuted, { color: muted }]}>Already have an account? </Text>
-                <Text style={[styles.signInLink, { color: accent }]}>Sign In</Text>
+              <Pressable accessibilityRole="link">
+                <Text style={[styles.footerLink, { color: t.text }]}>Sign in</Text>
               </Pressable>
             </Link>
-          </View>
-
-          <View style={styles.orBlock}>
-            <View style={[styles.orLine, { backgroundColor: border }]} />
-            <Text style={[styles.orLabel, { color: tertiary }]}>OR JOIN WITH</Text>
-            <View style={[styles.orLine, { backgroundColor: border }]} />
-          </View>
-
-          <View style={styles.socialRow}>
-            <Pressable
-              style={[styles.socialBtn, { backgroundColor: inputBg, borderColor: border }]}
-              onPress={() => Alert.alert('Google sign-in', 'Social sign-in is not configured yet.')}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Google">
-              <Ionicons name="logo-google" size={22} color="#4285F4" />
-            </Pressable>
-            <Pressable
-              style={[styles.socialBtn, { backgroundColor: inputBg, borderColor: border }]}
-              onPress={() => Alert.alert('Facebook sign-in', 'Social sign-in is not configured yet.')}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Facebook">
-              <Ionicons name="logo-facebook" size={22} color="#1877F2" />
-            </Pressable>
-          </View>
-
-          <View style={styles.bottomBlock}>
-            <Text style={[styles.kicker, { color: accent }]}>WELCOME TO KNEAD</Text>
-            <Text style={[styles.heroTitle, { color: text }]}>Create your account</Text>
-            <Text style={[styles.heroBody, { color: muted }]}>
-              Share free posts, add pay-to-unlock when you are ready, and use Private Room after verification.
-            </Text>
-
-            <View style={[styles.featureCard, { backgroundColor: SIGNUP.featureBeige }]}>
-              <FontAwesome name="leaf" size={20} color={accent} />
-              <Text style={[styles.featureTitle, { color: text }]}>Creator earnings</Text>
-              <Text style={[styles.featureDesc, { color: muted }]}>
-                Transparent splits: 40% platform on paid posts, 10% on private-room bookings.
-              </Text>
-            </View>
-
-            <View style={[styles.featureCard, styles.featureCardWhite, { backgroundColor: cardBg, borderColor: border }]}>
-              <FontAwesome name="magic" size={20} color={accent} />
-              <Text style={[styles.featureTitle, { color: text }]}>Safety & review</Text>
-              <Text style={[styles.featureDesc, { color: muted }]}>
-                Paid feed posts are reviewed before they go live. Private rooms stay KYC-gated.
-              </Text>
-            </View>
-
-            <View style={styles.proofRow}>
-              <View style={styles.avatars}>
-                <View style={[styles.avatar, styles.avatar1]} />
-                <View style={[styles.avatar, styles.avatar2]} />
-                <View style={[styles.avatar, styles.avatar3]} />
-              </View>
-              <Text style={[styles.proofText, { color: muted }]}>Welcome — set up your profile in a minute.</Text>
-            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -294,48 +246,50 @@ export default function RegisterScreen() {
   );
 }
 
-function FieldLabel({ children, color }: { children: string; color: string }) {
-  return <Text style={[fieldLabelStyles.label, { color }]}>{children}</Text>;
-}
-
-const fieldLabelStyles = StyleSheet.create({
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-    letterSpacing: 0.2,
-  },
-});
-
 function createStyles() {
   return StyleSheet.create({
     flex: { flex: 1 },
-    scrollContent: {
+    content: {
       paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
       paddingBottom: spacing.xxl,
-    },
-    topBar: {
-      marginBottom: spacing.md,
     },
     backBtn: {
       width: 44,
       height: 44,
-      borderRadius: 14,
-      borderWidth: StyleSheet.hairlineWidth,
+      borderRadius: 12,
+      borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
+      marginBottom: spacing.lg,
     },
-    card: {
-      borderRadius: 22,
-      padding: spacing.lg,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.08,
-      shadowRadius: 24,
-      elevation: 6,
+    brand: {
+      fontSize: 20,
+      fontWeight: '700',
+      letterSpacing: -0.3,
+      marginBottom: spacing.sm,
+    },
+    title: {
+      fontSize: 28,
+      fontWeight: '700',
+      letterSpacing: -0.6,
+      lineHeight: 34,
+      marginBottom: spacing.xs,
+    },
+    subtitle: {
+      fontSize: 15,
+      lineHeight: 22,
+      marginBottom: spacing.xl,
+    },
+    label: {
+      fontSize: 13,
+      fontWeight: '500',
+      marginBottom: spacing.sm,
     },
     input: {
       minHeight: 52,
-      borderRadius: 16,
+      borderRadius: 12,
+      borderWidth: 1,
       paddingHorizontal: spacing.md,
       fontSize: 16,
       marginBottom: spacing.md,
@@ -343,14 +297,14 @@ function createStyles() {
     passwordWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 16,
-      paddingRight: spacing.md,
+      borderRadius: 12,
+      borderWidth: 1,
+      paddingHorizontal: spacing.md,
       marginBottom: spacing.md,
     },
     passwordInput: {
       flex: 1,
       minHeight: 52,
-      paddingHorizontal: spacing.md,
       fontSize: 16,
     },
     termsRow: {
@@ -358,13 +312,14 @@ function createStyles() {
       alignItems: 'flex-start',
       gap: spacing.sm,
       marginBottom: spacing.lg,
+      marginTop: spacing.xs,
     },
     checkbox: {
       width: 22,
       height: 22,
       borderRadius: 6,
       borderWidth: 1.5,
-      marginTop: 2,
+      marginTop: 1,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -375,136 +330,29 @@ function createStyles() {
     },
     termsLink: {
       fontWeight: '700',
-      textDecorationLine: 'underline',
     },
-    ctaGradient: {
-      borderRadius: 999,
-      overflow: 'hidden',
-      marginBottom: spacing.lg,
-    },
-    ctaInner: {
-      minHeight: 56,
-      flexDirection: 'row',
+    cta: {
+      width: '100%',
+      minHeight: 52,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.xl,
     },
-    ctaPressed: { opacity: 0.92 },
     ctaText: {
-      color: '#FFFFFF',
-      fontSize: 17,
+      fontSize: 16,
       fontWeight: '700',
-      letterSpacing: -0.2,
+      textAlign: 'center',
     },
-    signInRow: {
+    pressed: { opacity: 0.9 },
+    footerRow: {
+      marginTop: spacing.xl,
       flexDirection: 'row',
       justifyContent: 'center',
+      alignItems: 'center',
+      minHeight: 44,
       flexWrap: 'wrap',
     },
-    signInMuted: {
-      fontSize: 15,
-    },
-    signInLink: {
-      fontSize: 15,
-      fontWeight: '700',
-    },
-    orBlock: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: spacing.xl,
-      marginBottom: spacing.lg,
-      gap: spacing.md,
-    },
-    orLine: { flex: 1, height: StyleSheet.hairlineWidth },
-    orLabel: {
-      fontSize: 11,
-      fontWeight: '700',
-      letterSpacing: 1.2,
-    },
-    socialRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: spacing.lg,
-    },
-    socialBtn: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      borderWidth: StyleSheet.hairlineWidth,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    bottomBlock: {
-      marginTop: spacing.xxl,
-    },
-    kicker: {
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 1.4,
-      marginBottom: spacing.sm,
-    },
-    heroTitle: {
-      fontSize: 28,
-      fontWeight: '800',
-      letterSpacing: -0.8,
-      marginBottom: spacing.md,
-    },
-    heroBody: {
-      fontSize: 16,
-      lineHeight: 24,
-      marginBottom: spacing.xl,
-    },
-    featureCard: {
-      borderRadius: 18,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      gap: spacing.xs,
-    },
-    featureCardWhite: {
-      borderWidth: StyleSheet.hairlineWidth,
-    },
-    featureTitle: {
-      fontSize: 17,
-      fontWeight: '800',
-      marginTop: spacing.xs,
-    },
-    featureDesc: {
-      fontSize: 14,
-      lineHeight: 21,
-    },
-    proofRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: spacing.lg,
-      gap: spacing.md,
-    },
-    avatars: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    avatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      borderWidth: 2,
-      borderColor: '#FFFFFF',
-      marginLeft: -10,
-    },
-    avatar1: {
-      marginLeft: 0,
-      backgroundColor: '#C4A484',
-    },
-    avatar2: {
-      backgroundColor: '#8B7355',
-    },
-    avatar3: {
-      backgroundColor: '#5C4A3A',
-    },
-    proofText: {
-      fontSize: 14,
-      fontWeight: '600',
-      flex: 1,
-    },
+    footerMuted: { fontSize: 15 },
+    footerLink: { fontSize: 15, fontWeight: '700' },
   });
 }

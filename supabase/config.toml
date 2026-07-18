@@ -1,6 +1,13 @@
 # https://supabase.com/docs/guides/cli/config
 
+# Skip confirmation emails on signup (avoids Auth email rate limits during development).
+[auth.email]
+enable_confirmations = false
+
 [functions.paystack-webhook]
+verify_jwt = false
+
+[functions.register]
 verify_jwt = false
 
 [functions.booking-push-notify]

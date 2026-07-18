@@ -18,7 +18,7 @@ export function useAuthBootstrap() {
       if (cancelled) return;
       setSession(session);
       if (session?.user) {
-        const p = await fetchProfile(session.user.id);
+        const p = await fetchProfile(session.user.id, session.user.email ?? '');
         if (!cancelled) setProfile(p);
       } else {
         setProfile(null);
@@ -31,7 +31,7 @@ export function useAuthBootstrap() {
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       if (session?.user) {
-        const p = await fetchProfile(session.user.id);
+        const p = await fetchProfile(session.user.id, session.user.email ?? '');
         setProfile(p);
       } else {
         setProfile(null);

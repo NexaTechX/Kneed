@@ -42,7 +42,7 @@ export default function EditProfileScreen() {
         headline: headline.trim() || null,
         creator_bio: bio.trim() || null,
       });
-      const fresh = await fetchProfile(user.id);
+      const fresh = await fetchProfile(user.id, user.email ?? '');
       if (fresh) setProfile(fresh);
       Alert.alert('Saved', 'Your profile was updated.');
     } catch (e: unknown) {

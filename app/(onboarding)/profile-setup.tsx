@@ -34,7 +34,7 @@ export default function ProfileSetupScreen() {
         full_name: name.trim(),
         phone: phone.trim() || null,
       });
-      const fresh = await fetchProfile(user.id);
+      const fresh = await fetchProfile(user.id, user.email ?? '');
       if (fresh) useAuthStore.getState().setProfile(fresh);
       // Let the central entry gate decide the next step (e.g. age confirmation).
       router.replace('/');

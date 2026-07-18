@@ -14,6 +14,7 @@ import { spacing } from '@/constants/spacing';
 import type { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth } from '@/hooks/useAuth';
+import { areMutualFriends, getOrCreateDm } from '@/lib/chat';
 import { fetchCreatorProfile } from '@/lib/privateRoom';
 import { supabase } from '@/lib/supabase';
 import { formatSupabaseError } from '@/lib/supabaseErrors';
@@ -29,6 +30,7 @@ export default function CreatorProfileScreen() {
   const styles = useMemo(() => createStyles(t), [t]);
   const [showBooking, setShowBooking] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [openingChat, setOpeningChat] = useState(false);
 
   const { data: creator, isLoading } = useQuery({
     queryKey: ['creator-profile', creatorId],
@@ -40,7 +42,7 @@ export default function CreatorProfileScreen() {
     queryKey: ['creator-stats', creatorId, user?.id],
     enabled: Boolean(creatorId),
     queryFn: async () => {
-      const [followers, isFollowing] = await Promise.all([
+      const [followers, isFollowing, isFriend] = await Promise.all([
         supabase.from('social_follows').select('follower_id', { count: 'exact', head: true }).eq('followed_id', creatorId!),
         user
           ? supabase
@@ -50,8 +52,15 @@ export default function CreatorProfileScreen() {
               .eq('followed_id', creatorId!)
               .maybeSingle()
           : Promise.resolve({ data: null }),
+        user && creatorId && user.id !== creatorId
+          ? areMutualFriends(user.id, creatorId).catch(() => false)
+          : Promise.resolve(false),
       ]);
-      return { followers: followers.count ?? 0, following: Boolean((isFollowing as { data: unknown }).data) };
+      return {
+        followers: followers.count ?? 0,
+        following: Boolean((isFollowing as { data: unknown }).data),
+        friends: Boolean(isFriend),
+      };
     },
   });
 
@@ -69,6 +78,19 @@ export default function CreatorProfileScreen() {
       await qc.invalidateQueries({ queryKey: ['social-following', user.id] });
     } catch (e: unknown) {
       Alert.alert('Could not update follow', formatSupabaseError(e));
+    }
+  };
+
+  const openChat = async () => {
+    if (!creatorId || openingChat) return;
+    setOpeningChat(true);
+    try {
+      const conversationId = await getOrCreateDm(creatorId);
+      router.push(`/(client)/chat/${conversationId}` as never);
+    } catch (e: unknown) {
+      Alert.alert('Could not open chat', formatSupabaseError(e));
+    } finally {
+      setOpeningChat(false);
     }
   };
 
@@ -118,6 +140,15 @@ export default function CreatorProfileScreen() {
               onPress={() => void toggleFollow()}
               style={styles.flexBtn}
             />
+            {stats?.friends ? (
+              <Button
+                title="Message"
+                variant="outline"
+                loading={openingChat}
+                onPress={() => void openChat()}
+                style={styles.flexBtn}
+              />
+            ) : null}
             <Pressable
               onPress={() => setShowReport(true)}
               style={[styles.iconBtn, { borderColor: t.border }]}

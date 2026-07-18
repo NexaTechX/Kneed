@@ -1,10 +1,14 @@
 import { supabase } from '@/lib/supabase';
 import type { Profile, UserRole } from '@/types/database';
 
-export async function fetchProfile(userId: string): Promise<Profile | null> {
+/** Public-safe profile columns (excludes email — private; use auth session). */
+const PROFILE_SELECT =
+  'id, role, full_name, avatar_url, phone, onboarding_complete, is_age_verified, accepted_content_policy_at, account_status, is_kyc_verified, kyc_verified_at, gender, headline, creator_bio, cover_image_url, private_room_lat, private_room_lng, private_room_rate_cents, private_room_location_updated_at, payout_bank_name, payout_account_number, payout_account_name, created_at';
+
+export async function fetchProfile(userId: string, emailFallback = ''): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select(PROFILE_SELECT)
     .eq('id', userId)
     .maybeSingle();
 
@@ -12,7 +16,8 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     console.warn('fetchProfile', error.message);
     return null;
   }
-  return data as Profile | null;
+  if (!data) return null;
+  return { ...(data as Omit<Profile, 'email'>), email: emailFallback };
 }
 
 export async function updateProfile(
@@ -33,9 +38,14 @@ export async function updateProfile(
     >
   >,
 ) {
-  const { data, error } = await supabase.from('profiles').update(patch).eq('id', userId).select().single();
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', userId)
+    .select(PROFILE_SELECT)
+    .single();
   if (error) throw error;
-  return data as Profile;
+  return { ...(data as Omit<Profile, 'email'>), email: '' } as Profile;
 }
 
 export async function setRole(userId: string, role: UserRole) {

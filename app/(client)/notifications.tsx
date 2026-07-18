@@ -23,6 +23,7 @@ const ICON: Record<NotificationType, keyof typeof Ionicons.glyphMap> = {
   kyc: 'shield-checkmark',
   moderation: 'alert-circle',
   system: 'notifications',
+  message: 'chatbubbles',
 };
 
 export default function NotificationsScreen() {
@@ -52,7 +53,11 @@ export default function NotificationsScreen() {
   }, [user, qc]);
 
   const onPressItem = (n: AppNotification) => {
-    if (n.post_id) {
+    const conversationId =
+      typeof n.data?.conversation_id === 'string' ? n.data.conversation_id : undefined;
+    if (n.type === 'message' && conversationId) {
+      router.push(`/(client)/chat/${conversationId}` as never);
+    } else if (n.post_id) {
       router.push({ pathname: '/(client)/post-comments', params: { id: n.post_id } });
     } else if (n.session_id) {
       router.push('/(client)/(tabs)/private-room');

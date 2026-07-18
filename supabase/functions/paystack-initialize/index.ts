@@ -65,10 +65,10 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { data: profile } = await supabase.from('profiles').select('email').eq('id', user.id).maybeSingle();
-  const email = profile?.email ?? user.email ?? '';
+  // Email is private on profiles — use auth.users via the JWT.
+  const email = user.email ?? '';
   if (!email) {
-    return new Response(JSON.stringify({ error: 'No email on profile' }), {
+    return new Response(JSON.stringify({ error: 'No email on account' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

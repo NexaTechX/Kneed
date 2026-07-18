@@ -129,7 +129,7 @@ export default function ClientProfileScreen() {
     if (!user) return;
     setRefreshing(true);
     try {
-      const [, fresh] = await Promise.all([refetchSocial(), fetchProfile(user.id)]);
+      const [, fresh] = await Promise.all([refetchSocial(), fetchProfile(user.id, user.email ?? '')]);
       if (fresh) setProfile(fresh);
     } finally {
       setRefreshing(false);
@@ -162,7 +162,6 @@ export default function ClientProfileScreen() {
             <Button title="Update photo" variant="outline" loading={uploading} onPress={() => void pickAvatar()} />
           </View>
           <Text style={[styles.name, { color: t.text }]}>{profile?.full_name || 'Your profile'}</Text>
-          <Text style={[styles.email, { color: t.textSecondary }]}>{profile?.email}</Text>
           <View style={styles.heroStatsRow}>
             <Pressable
               style={styles.heroStat}
@@ -196,13 +195,22 @@ export default function ClientProfileScreen() {
 
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: t.text }]}>Account</Text>
-          <PressableCard
-            icon="create-outline"
-            title="Edit profile & KYC"
-            subtitle="Update your details and apply for verification"
-            onPress={() => router.push('/(client)/edit-profile')}
-            t={t}
-          />
+          <View style={styles.actionGrid}>
+            <PressableCard
+              icon="create-outline"
+              title="Edit profile & KYC"
+              subtitle="Update your details and apply for verification"
+              onPress={() => router.push('/(client)/edit-profile')}
+              t={t}
+            />
+            <PressableCard
+              icon="settings-outline"
+              title="Settings"
+              subtitle="Email and account preferences"
+              onPress={() => router.push('/(client)/settings')}
+              t={t}
+            />
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -310,7 +318,6 @@ function createStyles(t: AppTheme) {
     },
     avatarBlock: { alignItems: 'center', gap: spacing.sm, marginTop: -56 },
     name: { fontSize: 24, fontWeight: '700', letterSpacing: -0.5, textAlign: 'center' },
-    email: { fontSize: 14, textAlign: 'center' },
     heroStatsRow: { flexDirection: 'row', width: '100%', marginTop: spacing.xs },
     heroStat: { flex: 1, alignItems: 'center', paddingVertical: spacing.xs },
     heroStatCount: { fontSize: 18, fontWeight: '700' },

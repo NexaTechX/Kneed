@@ -31,4 +31,8 @@ export const queryKeys = {
 
   kycLatest: (userId?: string) => ['kyc-latest', userId] as const,
   search: (q: string) => ['search', q] as const,
+
+  conversations: (userId?: string) => ['conversations', userId] as const,
+  messages: (conversationId?: string) => ['messages', conversationId] as const,
+  conversation: (conversationId?: string) => ['conversation', conversationId] as const,
 };

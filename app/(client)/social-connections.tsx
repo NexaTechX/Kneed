@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { SafeView } from '@/components/layout/SafeView';
 import { Avatar } from '@/components/ui/Avatar';
@@ -9,6 +10,8 @@ import { spacing } from '@/constants/spacing';
 import type { AppTheme } from '@/constants/theme';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useAuth } from '@/hooks/useAuth';
+import { getOrCreateDm } from '@/lib/chat';
+import { formatSupabaseError } from '@/lib/supabaseErrors';
 import { supabase } from '@/lib/supabase';
 
 type SocialTab = 'followers' | 'following' | 'friends';
@@ -25,9 +28,24 @@ export default function SocialConnectionsScreen() {
   const { user } = useAuth();
   const t = useAppTheme();
   const styles = useMemo(() => createStyles(t), [t]);
+  const router = useRouter();
   const { tab } = useLocalSearchParams<{ tab?: string }>();
   const initialTab: SocialTab = tab === 'following' || tab === 'friends' ? tab : 'followers';
   const [activeTab, setActiveTab] = useState<SocialTab>(initialTab);
+  const [openingChatFor, setOpeningChatFor] = useState<string | null>(null);
+
+  const openChat = async (peerId: string) => {
+    if (openingChatFor) return;
+    setOpeningChatFor(peerId);
+    try {
+      const conversationId = await getOrCreateDm(peerId);
+      router.push(`/(client)/chat/${conversationId}` as never);
+    } catch (e: unknown) {
+      Alert.alert('Could not open chat', formatSupabaseError(e));
+    } finally {
+      setOpeningChatFor(null);
+    }
+  };
 
   const { data: social, isLoading } = useQuery({
     queryKey: ['profile-social', user?.id],
@@ -111,10 +129,29 @@ export default function SocialConnectionsScreen() {
           contentContainerStyle={[styles.listContent, users.length === 0 && styles.listEmpty]}
           renderItem={({ item }) => (
             <View style={[styles.row, { borderBottomColor: t.border }]}>
-              <Avatar name={item.full_name?.trim() || 'Member'} uri={item.avatar_url} size={44} />
-              <Text style={[styles.name, { color: t.text }]} numberOfLines={1}>
-                {item.full_name?.trim() || 'Member'}
-              </Text>
+              <Pressable
+                onPress={() => router.push(`/(client)/creator/${item.id}` as never)}
+                style={styles.rowMain}
+                accessibilityRole="button">
+                <Avatar name={item.full_name?.trim() || 'Member'} uri={item.avatar_url} size={44} />
+                <Text style={[styles.name, { color: t.text }]} numberOfLines={1}>
+                  {item.full_name?.trim() || 'Member'}
+                </Text>
+              </Pressable>
+              {activeTab === 'friends' ? (
+                <Pressable
+                  onPress={() => void openChat(item.id)}
+                  disabled={openingChatFor === item.id}
+                  style={[styles.chatBtn, { borderColor: t.borderStrong, backgroundColor: t.surfaceElevated }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${item.full_name?.trim() || 'friend'}`}>
+                  {openingChatFor === item.id ? (
+                    <ActivityIndicator size="small" color={t.text} />
+                  ) : (
+                    <Ionicons name="chatbubble-outline" size={18} color={t.text} />
+                  )}
+                </Pressable>
+              ) : null}
             </View>
           )}
           ListEmptyComponent={<Text style={[styles.emptyText, { color: t.textSecondary }]}>No users yet.</Text>}
@@ -153,7 +190,16 @@ function createStyles(t: AppTheme) {
       paddingVertical: spacing.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
     },
+    rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minWidth: 0 },
     name: { flex: 1, fontSize: 16, fontWeight: '600' },
+    chatBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     emptyText: { textAlign: 'center', fontSize: 15, paddingHorizontal: spacing.xl },
   });
 }

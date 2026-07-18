@@ -134,7 +134,27 @@ export type NotificationType =
   | 'booking'
   | 'kyc'
   | 'moderation'
-  | 'system';
+  | 'system'
+  | 'message';
+
+export interface Conversation {
+  id: string;
+  user_low: string;
+  user_high: string;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  user_low_last_read_at: string | null;
+  user_high_last_read_at: string | null;
+  created_at: string;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+}
 
 export interface AppNotification {
   id: string;
@@ -219,6 +239,16 @@ export interface Database {
           id_doc_path: string;
         };
         Update: Partial<KycApplication>;
+      };
+      conversations: {
+        Row: Conversation;
+        Insert: Partial<Conversation> & { user_low: string; user_high: string };
+        Update: Partial<Conversation>;
+      };
+      messages: {
+        Row: Message;
+        Insert: Partial<Message> & { conversation_id: string; sender_id: string; body: string };
+        Update: Partial<Message>;
       };
     };
   };

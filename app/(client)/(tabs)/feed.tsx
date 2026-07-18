@@ -37,6 +37,8 @@ import { queryKeys } from '@/lib/queries';
 import { toNaira } from '@/lib/social';
 
 const PAGE_SIZE = 20;
+/** Stable empty list so `data = []` query defaults don't create a new array every render. */
+const EMPTY_IDS: string[] = [];
 
 type FeedPost = {
   id: string;
@@ -78,7 +80,7 @@ export default function FeedScreen() {
   const [resolvedMedia, setResolvedMedia] = useState<Record<string, string>>({});
   const [reportTarget, setReportTarget] = useState<{ type: ReportTargetType; id: string } | null>(null);
 
-  const { data: accessPostIds = [] } = useQuery({
+  const { data: accessPostIds = EMPTY_IDS } = useQuery({
     queryKey: ['post-access-grants', user?.id],
     enabled: Boolean(user),
     queryFn: async () => {
@@ -96,7 +98,7 @@ export default function FeedScreen() {
     queryFn: () => fetchUnreadCount(user!.id),
   });
 
-  const { data: followingIds = [] } = useQuery({
+  const { data: followingIds = EMPTY_IDS } = useQuery({
     queryKey: ['social-following', user?.id],
     enabled: Boolean(user),
     queryFn: async () => {
@@ -245,7 +247,19 @@ export default function FeedScreen() {
         const url = await resolvePostMediaUrl(p.media_url);
         if (url) out[p.id] = url;
       }
-      if (!cancelled) setResolvedMedia(out);
+      if (cancelled) return;
+      // Avoid setState when nothing changed — a new {} every time re-triggered this effect.
+      setResolvedMedia((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(out);
+        if (
+          prevKeys.length === nextKeys.length &&
+          nextKeys.every((k) => prev[k] === out[k])
+        ) {
+          return prev;
+        }
+        return out;
+      });
     })();
     return () => {
       cancelled = true;

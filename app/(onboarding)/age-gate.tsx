@@ -35,7 +35,7 @@ export default function AgeGateScreen() {
     setLoading(true);
     try {
       await recordAgeAndPolicyConsent();
-      const fresh = await fetchProfile(user.id);
+      const fresh = await fetchProfile(user.id, user.email ?? '');
       if (fresh) setProfile(fresh);
       router.replace('/(client)/(tabs)/feed');
     } catch (e: unknown) {
