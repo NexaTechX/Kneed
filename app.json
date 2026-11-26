@@ -18,9 +18,12 @@
         "NSLocationWhenInUseUsageDescription": "Knead uses your location to support live proximity matching during confirmed bookings.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Knead uses background location so proximity matching keeps working while the app is minimized.",
         "UIBackgroundModes": [
+          "location",
           "location"
-        ]
-      }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.knead.app"
     },
     "android": {
       "package": "com.knead.app",
